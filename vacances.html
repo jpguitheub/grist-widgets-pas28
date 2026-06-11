@@ -218,7 +218,7 @@ async function refreshVacances() {
     }));
 
     await grist.docApi.applyUserActions([
-      ["BulkAddOrReplaceRecord", gristId, rows.map((_, i) => i + 1),
+      ["BulkAddRecord", gristId, rows.map(() => null),
         {
           annee_scolaire: rows.map(r => r.annee_scolaire),
           description:    rows.map(r => r.description),

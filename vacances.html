@@ -37,7 +37,7 @@
 </head>
 <body>
   <h1>🗓️ Vacances scolaires — Zone B</h1>
-  <p class="subtitle">Source : ftp.opendatasoft.com (Éducation nationale) · Fichier iCal officiel</p>
+  <p class="subtitle">Source : data.education.gouv.fr · API officielle Éducation nationale</p>
   <p class="annees-info" id="annees-label"></p>
 
   <button class="btn" id="btn-refresh">
@@ -61,72 +61,22 @@
 <script>
 const TABLE_NAME = "t_vacances";
 
-// URL du fichier iCal officiel zone B — hébergé par l'Éducation nationale
-// Proxy CORS nécessaire car le navigateur ne peut pas fetch directement un FTP/HTTP tiers
-// On utilise allorigins.win, proxy public gratuit sans clé
-const ICS_URL = "https://fr.ftp.opendatasoft.com/openscol/fr-en-calendrier-scolaire/Zone-B.ics";
-const PROXY   = "https://api.allorigins.win/raw?url=";
+// URL correcte : /api/v2/ (et non v2.1)
+const API_BASE =
+  "https://data.education.gouv.fr/api/v2/catalog/datasets/" +
+  "fr-en-calendrier-scolaire/records";
 
 // ── Calcul des 3 années scolaires à conserver ─────────────────────────────────
 function getAnneesVoulues() {
   const today = new Date();
   const month = today.getMonth() + 1;
   const year  = today.getFullYear();
-  // Avant septembre → l'année scolaire courante a commencé l'an dernier
   const debut = (month >= 9) ? year : year - 1;
   return [
     `${debut - 1}-${debut}`,
     `${debut}-${debut + 1}`,
     `${debut + 1}-${debut + 2}`,
   ];
-}
-
-// ── Parser iCal minimaliste ───────────────────────────────────────────────────
-// Extrait les événements VEVENT avec SUMMARY, DTSTART, DTEND
-function parseICS(text) {
-  const events = [];
-  const vevents = text.split("BEGIN:VEVENT").slice(1);
-
-  for (const block of vevents) {
-    const get = (key) => {
-      // Gère les lignes repliées (continuation avec espace/tab)
-      const unfolded = block.replace(/\r?\n[ \t]/g, "");
-      const m = unfolded.match(new RegExp(key + "[^:]*:([^\\r\\n]+)"));
-      return m ? m[1].trim() : null;
-    };
-
-    const summary  = get("SUMMARY");
-    const dtstart  = get("DTSTART");
-    const dtend    = get("DTEND");
-
-    if (!summary || !dtstart || !dtend) continue;
-
-    // DTSTART peut être VALUE=DATE:20241019 ou 20241019T000000Z
-    const parseDate = (s) => {
-      const d = s.replace(/T.*$/, ""); // garde seulement YYYYMMDD
-      return new Date(
-        parseInt(d.slice(0,4)),
-        parseInt(d.slice(4,6)) - 1,
-        parseInt(d.slice(6,8))
-      );
-    };
-
-    events.push({
-      summary: summary.replace(/\\,/g, ",").replace(/\\n/g, " "),
-      start:   parseDate(dtstart),
-      end:     parseDate(dtend),  // dans iCal DTEND est exclusif (jour d'après)
-    });
-  }
-  return events;
-}
-
-// Déduit l'année scolaire depuis une date de début d'événement
-// ex: oct 2024 → "2024-2025" ; jan 2025 → "2024-2025"
-function getAnneeScolaire(dateDebut) {
-  const m = dateDebut.getMonth() + 1; // 1=jan…12=déc
-  const y = dateDebut.getFullYear();
-  const debut = (m >= 9) ? y : y - 1;
-  return `${debut}-${debut + 1}`;
 }
 
 // ── Helpers UI ────────────────────────────────────────────────────────────────
@@ -145,14 +95,14 @@ function setLoading(on) {
     : "🔄 Actualiser les vacances zone B";
 }
 
-function fmtDate(d) {
-  if (!d) return "";
-  return d.toLocaleDateString("fr-FR");
+function fmtDate(isoStr) {
+  if (!isoStr) return "";
+  return new Date(isoStr).toLocaleDateString("fr-FR");
 }
 
-function toUnix(d) {
-  if (!d) return null;
-  return Math.floor(d.getTime() / 1000);
+function toUnix(isoStr) {
+  if (!isoStr) return null;
+  return Math.floor(new Date(isoStr).getTime() / 1000);
 }
 
 // ── Init affichage années ─────────────────────────────────────────────────────
@@ -160,49 +110,56 @@ const anneesVoulues = getAnneesVoulues();
 document.getElementById("annees-label").textContent =
   "Années récupérées : " + anneesVoulues.join(" · ");
 
+// ── Récupération paginée ──────────────────────────────────────────────────────
+// L'API v2 retourne max 100 enregistrements par appel.
+// On boucle sur les 3 années pour être sûr de tout avoir.
+async function fetchAnnee(annee) {
+  const where = encodeURIComponent(
+    `annee_scolaire="${annee}" AND zones="Zone B"`
+  );
+  const url = `${API_BASE}?where=${where}&limit=50&order_by=start_date`;
+  const resp = await fetch(url);
+  if (!resp.ok) {
+    const body = await resp.text();
+    throw new Error(`API HTTP ${resp.status} pour ${annee} : ${body.slice(0, 200)}`);
+  }
+  const json = await resp.json();
+  // L'API v2 retourne { records: [ { record: { fields: {...} } }, … ] }
+  return (json.records || []).map(r => r.record ? r.record.fields : r.fields || r);
+}
+
 // ── Fonction principale ───────────────────────────────────────────────────────
 async function refreshVacances() {
   setLoading(true);
-  setStatus("Téléchargement du calendrier iCal zone B…", "info");
+  setStatus("Connexion à data.education.gouv.fr…", "info");
   document.getElementById("preview").style.display = "none";
 
   try {
-    // 1. Télécharger le fichier iCal via proxy CORS
-    const resp = await fetch(PROXY + encodeURIComponent(ICS_URL));
-    if (!resp.ok) throw new Error("Téléchargement iCal : HTTP " + resp.status);
-    const icsText = await resp.text();
-
-    if (!icsText.includes("BEGIN:VEVENT")) {
-      throw new Error("Le fichier iCal reçu semble vide ou invalide.");
+    // 1. Récupérer les données pour chaque année
+    let allRecords = [];
+    for (const annee of anneesVoulues) {
+      setStatus(`Récupération ${annee}…`, "info");
+      const records = await fetchAnnee(annee);
+      allRecords = allRecords.concat(records);
     }
 
-    // 2. Parser le iCal
-    const allEvents = parseICS(icsText);
-    setStatus(allEvents.length + " événements parsés — filtrage…", "info");
-
-    // 3. Filtrer sur les 3 années scolaires voulues
-    const events = allEvents.filter(e =>
-      anneesVoulues.includes(getAnneeScolaire(e.start))
-    );
-
-    if (events.length === 0) {
-      const anneesDispos = [...new Set(allEvents.map(e => getAnneeScolaire(e.start)))].sort();
+    if (allRecords.length === 0) {
       throw new Error(
-        "Aucune période pour " + anneesVoulues.join(", ") +
-        ". Années disponibles dans le fichier : " + anneesDispos.join(", ")
+        "Aucune période trouvée pour : " + anneesVoulues.join(", ") +
+        ". Vérifiez que ces années sont publiées sur data.education.gouv.fr."
       );
     }
 
-    setStatus(events.length + " périodes filtrées — écriture dans Grist…", "info");
+    setStatus(allRecords.length + " périodes récupérées — écriture dans Grist…", "info");
 
-    // 4. Trouver l'ID Grist de la table
+    // 2. Trouver l'ID Grist de la table
     const tables = await grist.docApi.listTables();
     const gristId = tables.find(t => t.toLowerCase() === TABLE_NAME.toLowerCase());
     if (!gristId) {
       throw new Error("Table \"" + TABLE_NAME + "\" introuvable. Tables : " + tables.join(", "));
     }
 
-    // 5. Vider la table
+    // 3. Vider la table
     const existing = await grist.docApi.fetchTable(gristId);
     if (existing.id && existing.id.length > 0) {
       await grist.docApi.applyUserActions([
@@ -210,19 +167,16 @@ async function refreshVacances() {
       ]);
     }
 
-    // 6. Insérer les nouvelles lignes
-    // DTEND iCal est exclusif → on recule d'1 jour pour avoir le vrai dernier jour
-    const rows = events.map(e => {
-      const finReelle = new Date(e.end);
-      finReelle.setDate(finReelle.getDate() - 1);
-      return {
-        annee_scolaire: getAnneeScolaire(e.start),
-        description:    e.summary,
-        date_debut:     toUnix(e.start),
-        date_fin:       toUnix(finReelle),
-      };
-    });
+    // 4. Préparer les lignes
+    // Champs API v2 : description, start_date, end_date, annee_scolaire, zones, location
+    const rows = allRecords.map(f => ({
+      annee_scolaire: (f.annee_scolaire || "").trim(),
+      description:    (f.description    || "").trim(),
+      date_debut:     toUnix(f.start_date),
+      date_fin:       toUnix(f.end_date),
+    }));
 
+    // 5. Insérer
     await grist.docApi.applyUserActions([
       ["BulkAddRecord", gristId, rows.map(() => null), {
         annee_scolaire: rows.map(r => r.annee_scolaire),
@@ -232,7 +186,7 @@ async function refreshVacances() {
       }]
     ]);
 
-    // 7. Affichage
+    // 6. Affichage
     document.getElementById("last-update").textContent =
       "Dernière mise à jour : " + new Date().toLocaleString("fr-FR");
 
@@ -243,8 +197,8 @@ async function refreshVacances() {
       tr.innerHTML =
         "<td>" + r.annee_scolaire + "</td>" +
         "<td>" + r.description + "</td>" +
-        "<td>" + fmtDate(new Date(r.date_debut * 1000)) + "</td>" +
-        "<td>" + fmtDate(new Date(r.date_fin  * 1000)) + "</td>";
+        "<td>" + fmtDate(r.date_debut ? new Date(r.date_debut * 1000).toISOString() : null) + "</td>" +
+        "<td>" + fmtDate(r.date_fin   ? new Date(r.date_fin   * 1000).toISOString() : null) + "</td>";
       tbody.appendChild(tr);
     });
     document.getElementById("preview").style.display = "block";

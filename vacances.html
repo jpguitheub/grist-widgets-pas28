@@ -7,106 +7,37 @@
   <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-
-    body {
-      font-family: "Marianne", Arial, sans-serif;
-      background: #f5f7fa;
-      color: #1a1a1a;
-      padding: 20px;
-      min-height: 100vh;
-    }
-
-    h1 {
-      font-size: 16px;
-      font-weight: 700;
-      color: #1f4e79;
-      margin-bottom: 4px;
-    }
-
-    .subtitle {
-      font-size: 12px;
-      color: #666;
-      margin-bottom: 20px;
-    }
-
-    .btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      background: #1f4e79;
-      color: white;
-      border: none;
-      border-radius: 6px;
-      padding: 10px 20px;
-      font-size: 14px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: background 0.2s;
-    }
-
-    .btn:hover  { background: #2e75b6; }
+    body { font-family: Arial, sans-serif; background: #f5f7fa; color: #1a1a1a; padding: 20px; }
+    h1 { font-size: 16px; font-weight: 700; color: #1f4e79; margin-bottom: 4px; }
+    .subtitle { font-size: 12px; color: #666; margin-bottom: 8px; }
+    .annees-info { font-size: 12px; color: #2e75b6; background: #d6e4f0;
+      padding: 6px 12px; border-radius: 4px; margin-bottom: 16px; display: inline-block; }
+    .btn { display: inline-flex; align-items: center; gap: 8px; background: #1f4e79;
+      color: white; border: none; border-radius: 6px; padding: 10px 20px;
+      font-size: 14px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
+    .btn:hover { background: #2e75b6; }
     .btn:disabled { background: #999; cursor: not-allowed; }
-
-    .spinner {
-      display: none;
-      width: 16px; height: 16px;
-      border: 2px solid rgba(255,255,255,0.4);
-      border-top-color: white;
-      border-radius: 50%;
-      animation: spin 0.7s linear infinite;
-    }
-
+    .spinner { display: none; width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.4);
+      border-top-color: white; border-radius: 50%; animation: spin 0.7s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
-
-    #status {
-      margin-top: 16px;
-      padding: 10px 14px;
-      border-radius: 6px;
-      font-size: 13px;
-      display: none;
-    }
-
+    #status { margin-top: 16px; padding: 10px 14px; border-radius: 6px;
+      font-size: 13px; display: none; }
     #status.ok    { background: #e2efda; color: #375623; border-left: 4px solid #375623; }
     #status.error { background: #fce4d6; color: #843c0c; border-left: 4px solid #843c0c; }
     #status.info  { background: #d6e4f0; color: #1f4e79; border-left: 4px solid #1f4e79; }
-
-    #last-update {
-      margin-top: 10px;
-      font-size: 11px;
-      color: #888;
-    }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 20px;
-      font-size: 12px;
-    }
-
-    th {
-      background: #1f4e79;
-      color: white;
-      padding: 8px 10px;
-      text-align: left;
-      font-weight: 600;
-    }
-
-    td {
-      padding: 7px 10px;
-      border-bottom: 1px solid #e0e0e0;
-      background: white;
-    }
-
+    #last-update { margin-top: 10px; font-size: 11px; color: #888; }
+    table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 12px; }
+    th { background: #1f4e79; color: white; padding: 8px 10px; text-align: left; font-weight: 600; }
+    td { padding: 7px 10px; border-bottom: 1px solid #e0e0e0; background: white; }
     tr:nth-child(even) td { background: #f5f7fa; }
-
     #preview { display: none; }
     #preview h2 { font-size: 13px; color: #1f4e79; margin-top: 20px; margin-bottom: 8px; }
   </style>
 </head>
-
 <body>
   <h1>🗓️ Vacances scolaires — Zone B</h1>
   <p class="subtitle">Source : data.education.gouv.fr · Mise à jour manuelle, une fois par an</p>
+  <p class="annees-info" id="annees-label"></p>
 
   <button class="btn" id="btn-refresh">
     <span class="spinner" id="spinner"></span>
@@ -118,29 +49,43 @@
 
   <div id="preview">
     <h2>Aperçu des données importées</h2>
-    <table id="preview-table">
-      <thead>
-        <tr>
-          <th>Année scolaire</th>
-          <th>Description</th>
-          <th>Début</th>
-          <th>Fin (reprise)</th>
-        </tr>
-      </thead>
+    <table>
+      <thead><tr>
+        <th>Année scolaire</th><th>Description</th><th>Début</th><th>Fin (reprise)</th>
+      </tr></thead>
       <tbody id="preview-body"></tbody>
     </table>
   </div>
 
 <script>
-// ── Constantes ────────────────────────────────────────────────────────────────
+const TABLE_NAME = "t_vacances";
+
 const API_URL =
   "https://data.education.gouv.fr/api/explore/v2.1/catalog/datasets/" +
   "fr-en-calendrier-scolaire/records" +
-  "?where=zones%20like%20%22Zone%20B%22&limit=100&order_by=start_date%20ASC";
+  "?where=zones%20like%20%22Zone%20B%22&limit=200&order_by=start_date%20ASC";
 
-const TABLE_NAME = "t_vacances"; // nom logique — Grist le trouvera
+// ── Calcul des 3 années scolaires à conserver ─────────────────────────────────
+// Règle : année précédente + année courante + année suivante
+// Début d'année scolaire = 1er septembre.
+// Entre le 1er juillet et le 31 août : on est en transition estivale,
+//   l'année N/N+1 n'a pas encore commencé → l'année courante reste N-1/N.
+function getAnneesVoulues() {
+  const today = new Date();
+  const month = today.getMonth() + 1; // 1=jan…12=déc
+  const year  = today.getFullYear();
 
-// ── Helpers UI ────────────────────────────────────────────────────────────────
+  // Septembre ou après → nouvelle année scolaire commencée
+  const debutCourante = (month >= 9) ? year : year - 1;
+
+  return [
+    `${debutCourante - 1}-${debutCourante}`,      // précédente  ex: 2023-2024
+    `${debutCourante}-${debutCourante + 1}`,        // courante    ex: 2024-2025
+    `${debutCourante + 1}-${debutCourante + 2}`,    // suivante    ex: 2025-2026
+  ];
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
 function setStatus(msg, type = "info") {
   const el = document.getElementById("status");
   el.textContent = msg;
@@ -156,17 +101,20 @@ function setLoading(on) {
     : "🔄 Actualiser les vacances zone B";
 }
 
-function fmtDate(d) {
-  if (!d) return "";
-  const dt = new Date(d);
-  return dt.toLocaleDateString("fr-FR");
+function fmtDate(unixSec) {
+  if (!unixSec) return "";
+  return new Date(unixSec * 1000).toLocaleDateString("fr-FR");
 }
 
-// Convertit une date ISO en timestamp Unix (secondes) pour Grist type Date
 function toUnix(isoStr) {
   if (!isoStr) return null;
   return Math.floor(new Date(isoStr).getTime() / 1000);
 }
+
+// ── Init affichage des années ciblées ─────────────────────────────────────────
+const anneesVoulues = getAnneesVoulues();
+document.getElementById("annees-label").textContent =
+  "Années récupérées : " + anneesVoulues.join(" · ");
 
 // ── Fonction principale ───────────────────────────────────────────────────────
 async function refreshVacances() {
@@ -175,33 +123,50 @@ async function refreshVacances() {
   document.getElementById("preview").style.display = "none";
 
   try {
-    // 1. Appel API Éducation nationale
+    // 1. Appel API
     const resp = await fetch(API_URL);
-    if (!resp.ok) throw new Error(`API Education : HTTP ${resp.status}`);
+    if (!resp.ok) throw new Error("API Education nationale : HTTP " + resp.status);
     const json = await resp.json();
-    const periods = json.results;
+    const allPeriods = json.results;
 
-    if (!periods || periods.length === 0) {
+    if (!allPeriods || allPeriods.length === 0) {
       setStatus("⚠️ Aucune période reçue depuis l'API. Réessayez plus tard.", "error");
       setLoading(false);
       return;
     }
 
-    setStatus(`${periods.length} périodes récupérées — écriture dans Grist…`, "info");
-
-    // 2. Récupérer les tables Grist pour trouver le bon ID (T_vacances)
-    const tables = await grist.docApi.listTables();
-    const gristId = tables.find(
-      t => t.toLowerCase() === TABLE_NAME.toLowerCase()
+    // 2. Filtrer sur les 3 années scolaires voulues
+    // Le champ annee_scolaire de l'API est au format "2024-2025"
+    const periods = allPeriods.filter(p =>
+      anneesVoulues.includes((p.annee_scolaire || "").trim())
     );
 
+    if (periods.length === 0) {
+      setStatus(
+        "⚠️ Aucune période trouvée pour " + anneesVoulues.join(", ") +
+        ". L'API a retourné ces années : " +
+        [...new Set(allPeriods.map(p => p.annee_scolaire))].join(", "),
+        "error"
+      );
+      setLoading(false);
+      return;
+    }
+
+    setStatus(
+      periods.length + " périodes filtrées sur " + allPeriods.length +
+      " reçues — écriture dans Grist…", "info"
+    );
+
+    // 3. Trouver l'ID Grist de la table
+    const tables = await grist.docApi.listTables();
+    const gristId = tables.find(t => t.toLowerCase() === TABLE_NAME.toLowerCase());
     if (!gristId) {
       throw new Error(
-        `Table "${TABLE_NAME}" introuvable. Tables disponibles : ${tables.join(", ")}`
+        "Table \"" + TABLE_NAME + "\" introuvable. Tables : " + tables.join(", ")
       );
     }
 
-    // 3. Vider la table existante
+    // 4. Vider la table
     const existing = await grist.docApi.fetchTable(gristId);
     if (existing.id && existing.id.length > 0) {
       await grist.docApi.applyUserActions([
@@ -209,63 +174,56 @@ async function refreshVacances() {
       ]);
     }
 
-    // 4. Insérer les nouvelles lignes
+    // 5. Insérer les nouvelles lignes
     const rows = periods.map(p => ({
-      annee_scolaire: p.annee_scolaire  || "",
-      description:    p.description     || "",
+      annee_scolaire: (p.annee_scolaire || "").trim(),
+      description:    (p.description    || "").trim(),
       date_debut:     toUnix(p.start_date),
       date_fin:       toUnix(p.end_date),
     }));
 
     await grist.docApi.applyUserActions([
-      ["BulkAddRecord", gristId, rows.map(() => null),
-        {
-          annee_scolaire: rows.map(r => r.annee_scolaire),
-          description:    rows.map(r => r.description),
-          date_debut:     rows.map(r => r.date_debut),
-          date_fin:       rows.map(r => r.date_fin),
-        }
-      ]
+      ["BulkAddRecord", gristId, rows.map(() => null), {
+        annee_scolaire: rows.map(r => r.annee_scolaire),
+        description:    rows.map(r => r.description),
+        date_debut:     rows.map(r => r.date_debut),
+        date_fin:       rows.map(r => r.date_fin),
+      }]
     ]);
 
-    // 5. Affichage résultat
-    const now = new Date().toLocaleString("fr-FR");
+    // 6. Affichage résultat
     document.getElementById("last-update").textContent =
-      `Dernière mise à jour : ${now}`;
+      "Dernière mise à jour : " + new Date().toLocaleString("fr-FR");
 
-    // Aperçu tableau
     const tbody = document.getElementById("preview-body");
     tbody.innerHTML = "";
     rows.forEach(r => {
       const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td>${r.annee_scolaire}</td>
-        <td>${r.description}</td>
-        <td>${fmtDate(r.date_debut * 1000)}</td>
-        <td>${fmtDate(r.date_fin * 1000)}</td>
-      `;
+      tr.innerHTML =
+        "<td>" + r.annee_scolaire + "</td>" +
+        "<td>" + r.description + "</td>" +
+        "<td>" + fmtDate(r.date_debut) + "</td>" +
+        "<td>" + fmtDate(r.date_fin) + "</td>";
       tbody.appendChild(tr);
     });
     document.getElementById("preview").style.display = "block";
 
-    setStatus(`✅ ${rows.length} périodes importées avec succès dans ${gristId}.`, "ok");
+    setStatus(
+      "✅ " + rows.length + " périodes importées pour : " + anneesVoulues.join(", "),
+      "ok"
+    );
 
   } catch (err) {
-    setStatus(`❌ Erreur : ${err.message}`, "error");
+    setStatus("❌ Erreur : " + err.message, "error");
     console.error(err);
   } finally {
     setLoading(false);
   }
 }
 
-// ── Init Grist ────────────────────────────────────────────────────────────────
+// ── Init ──────────────────────────────────────────────────────────────────────
 document.getElementById("btn-refresh").addEventListener("click", refreshVacances);
-
-grist.ready({
-  requiredAccess: "full",
-  columns: [],
-  allowSelectBy: false,
-});
+grist.ready({ requiredAccess: "full", columns: [], allowSelectBy: false });
 </script>
 </body>
 </html>

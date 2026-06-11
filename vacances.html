@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vacances scolaires — Zone B</title>
+  <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: "Marianne", Arial, sans-serif;
+      background: #f5f7fa;
+      color: #1a1a1a;
+      padding: 20px;
+      min-height: 100vh;
+    }
+
+    h1 {
+      font-size: 16px;
+      font-weight: 700;
+      color: #1f4e79;
+      margin-bottom: 4px;
+    }
+
+    .subtitle {
+      font-size: 12px;
+      color: #666;
+      margin-bottom: 20px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: #1f4e79;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      padding: 10px 20px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .btn:hover  { background: #2e75b6; }
+    .btn:disabled { background: #999; cursor: not-allowed; }
+
+    .spinner {
+      display: none;
+      width: 16px; height: 16px;
+      border: 2px solid rgba(255,255,255,0.4);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    #status {
+      margin-top: 16px;
+      padding: 10px 14px;
+      border-radius: 6px;
+      font-size: 13px;
+      display: none;
+    }
+
+    #status.ok    { background: #e2efda; color: #375623; border-left: 4px solid #375623; }
+    #status.error { background: #fce4d6; color: #843c0c; border-left: 4px solid #843c0c; }
+    #status.info  { background: #d6e4f0; color: #1f4e79; border-left: 4px solid #1f4e79; }
+
+    #last-update {
+      margin-top: 10px;
+      font-size: 11px;
+      color: #888;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+      font-size: 12px;
+    }
+
+    th {
+      background: #1f4e79;
+      color: white;
+      padding: 8px 10px;
+      text-align: left;
+      font-weight: 600;
+    }
+
+    td {
+      padding: 7px 10px;
+      border-bottom: 1px solid #e0e0e0;
+      background: white;
+    }
+
+    tr:nth-child(even) td { background: #f5f7fa; }
+
+    #preview { display: none; }
+    #preview h2 { font-size: 13px; color: #1f4e79; margin-top: 20px; margin-bottom: 8px; }
+  </style>
+</head>
+
+<body>
+  <h1>🗓️ Vacances scolaires — Zone B</h1>
+  <p class="subtitle">Source : data.education.gouv.fr · Mise à jour manuelle, une fois par an</p>
+
+  <button class="btn" id="btn-refresh">
+    <span class="spinner" id="spinner"></span>
+    <span id="btn-label">🔄 Actualiser les vacances zone B</span>
+  </button>
+
+  <div id="status"></div>
+  <div id="last-update"></div>
+
+  <div id="preview">
+    <h2>Aperçu des données importées</h2>
+    <table id="preview-table">
+      <thead>
+        <tr>
+          <th>Année scolaire</th>
+          <th>Description</th>
+          <th>Début</th>
+          <th>Fin (reprise)</th>
+        </tr>
+      </thead>
+      <tbody id="preview-body"></tbody>
+    </table>
+  </div>
+
+<script>
+// ── Constantes ────────────────────────────────────────────────────────────────
+const API_URL =
+  "https://data.education.gouv.fr/api/explore/v2.1/catalog/datasets/" +
+  "fr-en-calendrier-scolaire/records" +
+  "?where=zones%20like%20%22Zone%20B%22&limit=100&order_by=start_date%20ASC";
+
+const TABLE_NAME = "t_vacances"; // nom logique — Grist le trouvera
+
+// ── Helpers UI ────────────────────────────────────────────────────────────────
+function setStatus(msg, type = "info") {
+  const el = document.getElementById("status");
+  el.textContent = msg;
+  el.className = type;
+  el.style.display = "block";
+}
+
+function setLoading(on) {
+  document.getElementById("spinner").style.display = on ? "inline-block" : "none";
+  document.getElementById("btn-refresh").disabled = on;
+  document.getElementById("btn-label").textContent = on
+    ? "Import en cours…"
+    : "🔄 Actualiser les vacances zone B";
+}
+
+function fmtDate(d) {
+  if (!d) return "";
+  const dt = new Date(d);
+  return dt.toLocaleDateString("fr-FR");
+}
+
+// Convertit une date ISO en timestamp Unix (secondes) pour Grist type Date
+function toUnix(isoStr) {
+  if (!isoStr) return null;
+  return Math.floor(new Date(isoStr).getTime() / 1000);
+}
+
+// ── Fonction principale ───────────────────────────────────────────────────────
+async function refreshVacances() {
+  setLoading(true);
+  setStatus("Connexion à data.education.gouv.fr…", "info");
+  document.getElementById("preview").style.display = "none";
+
+  try {
+    // 1. Appel API Éducation nationale
+    const resp = await fetch(API_URL);
+    if (!resp.ok) throw new Error(`API Education : HTTP ${resp.status}`);
+    const json = await resp.json();
+    const periods = json.results;
+
+    if (!periods || periods.length === 0) {
+      setStatus("⚠️ Aucune période reçue depuis l'API. Réessayez plus tard.", "error");
+      setLoading(false);
+      return;
+    }
+
+    setStatus(`${periods.length} périodes récupérées — écriture dans Grist…`, "info");
+
+    // 2. Récupérer les tables Grist pour trouver le bon ID (T_vacances)
+    const tables = await grist.docApi.listTables();
+    const gristId = tables.find(
+      t => t.toLowerCase() === TABLE_NAME.toLowerCase()
+    );
+
+    if (!gristId) {
+      throw new Error(
+        `Table "${TABLE_NAME}" introuvable. Tables disponibles : ${tables.join(", ")}`
+      );
+    }
+
+    // 3. Vider la table existante
+    const existing = await grist.docApi.fetchTable(gristId);
+    if (existing.id && existing.id.length > 0) {
+      await grist.docApi.applyUserActions([
+        ["BulkRemoveRecord", gristId, existing.id]
+      ]);
+    }
+
+    // 4. Insérer les nouvelles lignes
+    const rows = periods.map(p => ({
+      annee_scolaire: p.annee_scolaire  || "",
+      description:    p.description     || "",
+      date_debut:     toUnix(p.start_date),
+      date_fin:       toUnix(p.end_date),
+    }));
+
+    await grist.docApi.applyUserActions([
+      ["BulkAddOrReplaceRecord", gristId, rows.map((_, i) => i + 1),
+        {
+          annee_scolaire: rows.map(r => r.annee_scolaire),
+          description:    rows.map(r => r.description),
+          date_debut:     rows.map(r => r.date_debut),
+          date_fin:       rows.map(r => r.date_fin),
+        }
+      ]
+    ]);
+
+    // 5. Affichage résultat
+    const now = new Date().toLocaleString("fr-FR");
+    document.getElementById("last-update").textContent =
+      `Dernière mise à jour : ${now}`;
+
+    // Aperçu tableau
+    const tbody = document.getElementById("preview-body");
+    tbody.innerHTML = "";
+    rows.forEach(r => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${r.annee_scolaire}</td>
+        <td>${r.description}</td>
+        <td>${fmtDate(r.date_debut * 1000)}</td>
+        <td>${fmtDate(r.date_fin * 1000)}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+    document.getElementById("preview").style.display = "block";
+
+    setStatus(`✅ ${rows.length} périodes importées avec succès dans ${gristId}.`, "ok");
+
+  } catch (err) {
+    setStatus(`❌ Erreur : ${err.message}`, "error");
+    console.error(err);
+  } finally {
+    setLoading(false);
+  }
+}
+
+// ── Init Grist ────────────────────────────────────────────────────────────────
+document.getElementById("btn-refresh").addEventListener("click", refreshVacances);
+
+grist.ready({
+  requiredAccess: "full",
+  columns: [],
+  allowSelectBy: false,
+});
+</script>
+</body>
+</html>

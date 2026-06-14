@@ -1,1 +1,909 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dossiers élèves — PAS</title>
+<script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+<style>
+:root {
+  --bleu:    #2563eb;
+  --bleu-cl: #dbeafe;
+  --vert:    #16a34a;
+  --vert-cl: #dcfce7;
+  --rouge:   #dc2626;
+  --rouge-cl:#fee2e2;
+  --orange:  #ea580c;
+  --gris:    #6b7280;
+  --gris-cl: #f3f4f6;
+  --bord:    #e5e7eb;
+  --texte:   #111827;
+  --rayon:   6px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 13px;
+  color: var(--texte);
+  background: #f9fafb;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
 
+/* ── Barre de statut connexion ── */
+#statut-connexion {
+  padding: 6px 14px;
+  font-size: 11px;
+  font-weight: 600;
+  background: #fef3c7;
+  color: #92400e;
+  border-bottom: 1px solid #fde68a;
+  flex-shrink: 0;
+}
+#statut-connexion.ok  { background: var(--vert-cl); color: #15803d; border-color: #86efac; }
+#statut-connexion.err { background: var(--rouge-cl); color: var(--rouge); border-color: #fca5a5; }
+
+/* ── Barre d'outils ── */
+#toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: white;
+  border-bottom: 1px solid var(--bord);
+  flex-shrink: 0;
+}
+#toolbar h1 { font-size: 14px; font-weight: 700; margin-right: auto; }
+#search {
+  border: 1px solid var(--bord);
+  border-radius: var(--rayon);
+  padding: 5px 10px;
+  font-size: 12px;
+  width: 200px;
+}
+#search:focus { outline: none; border-color: var(--bleu); }
+.btn {
+  padding: 6px 14px;
+  border-radius: var(--rayon);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: background .15s;
+}
+.btn-bleu   { background: var(--bleu);  color: white; }
+.btn-bleu:hover { background: #1d4ed8; }
+.btn-rouge  { background: var(--rouge); color: white; }
+.btn-rouge:hover { background: #b91c1c; }
+.btn-gris   { background: var(--gris-cl); color: var(--texte); }
+.btn-gris:hover { background: #e5e7eb; }
+
+/* ── Compteur ── */
+#compteur { font-size: 11px; color: var(--gris); white-space: nowrap; }
+
+/* ── Corps principal ── */
+#corps {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* ── Liste dossiers ── */
+#liste {
+  width: 320px;
+  min-width: 260px;
+  border-right: 1px solid var(--bord);
+  display: flex;
+  flex-direction: column;
+  background: white;
+  flex-shrink: 0;
+}
+#liste-items { flex: 1; overflow-y: auto; }
+
+.dossier-item {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--bord);
+  cursor: pointer;
+  transition: background .1s;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.dossier-item:hover { background: var(--gris-cl); }
+.dossier-item.actif { background: var(--bleu-cl); border-left: 3px solid var(--bleu); }
+.dossier-item.cloture { opacity: .6; }
+
+.d-identifiant { font-weight: 700; font-size: 13px; }
+.d-meta { font-size: 11px; color: var(--gris); display: flex; gap: 8px; flex-wrap: wrap; }
+.d-badge {
+  display: inline-block; font-size: 10px; padding: 1px 6px;
+  border-radius: 9px; font-weight: 600;
+}
+.badge-actif   { background: var(--vert-cl);  color: var(--vert); }
+.badge-cloture { background: var(--gris-cl);  color: var(--gris); }
+
+/* ── Zone formulaire ── */
+#zone-form {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+#form-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+/* État vide */
+#etat-vide {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--gris);
+  text-align: center;
+  gap: 10px;
+}
+#etat-vide svg { opacity: .25; }
+
+/* ── Blocs de formulaire ── */
+.bloc {
+  background: white;
+  border: 1px solid var(--bord);
+  border-radius: var(--rayon);
+  margin-bottom: 12px;
+  overflow: hidden;
+}
+.bloc-titre {
+  padding: 7px 14px;
+  font-weight: 700;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: white;
+}
+.bg-bleu   { background: var(--bleu); }
+.bg-vert   { background: #15803d; }
+.bg-orange { background: var(--orange); }
+.bg-violet { background: #7c3aed; }
+.bg-gris   { background: #4b5563; }
+
+.bloc-corps { padding: 12px 14px; }
+.grille2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.grille3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+
+.champ { margin-bottom: 10px; }
+.champ:last-child { margin-bottom: 0; }
+
+label.lbl {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--gris);
+  margin-bottom: 3px;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+}
+.ro { background: var(--gris-cl) !important; color: var(--gris); cursor: default; }
+
+input[type=text], input[type=date], select, textarea {
+  width: 100%;
+  border: 1px solid var(--bord);
+  border-radius: var(--rayon);
+  padding: 6px 9px;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--texte);
+  background: white;
+  transition: border-color .15s;
+}
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: var(--bleu);
+  box-shadow: 0 0 0 2px var(--bleu-cl);
+}
+textarea { resize: vertical; min-height: 52px; }
+
+/* ── Barre d'actions formulaire ── */
+#form-actions {
+  display: none;
+  gap: 8px;
+  padding: 10px 16px;
+  background: white;
+  border-top: 1px solid var(--bord);
+  flex-shrink: 0;
+  align-items: center;
+}
+#msg-form {
+  font-size: 12px; padding: 5px 10px;
+  border-radius: var(--rayon); display: none;
+}
+#msg-form.ok  { display:block; background:var(--vert-cl);  color:var(--vert);  }
+#msg-form.err { display:block; background:var(--rouge-cl); color:var(--rouge); }
+
+/* ── Modale confirmation suppression ── */
+#modale-overlay {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.4);
+  z-index: 200;
+  align-items: center;
+  justify-content: center;
+}
+#modale-overlay.visible { display: flex; }
+#modale {
+  background: white;
+  border-radius: 8px;
+  padding: 24px;
+  max-width: 360px;
+  width: 90%;
+  box-shadow: 0 20px 60px rgba(0,0,0,.3);
+}
+#modale h2 { font-size: 16px; margin-bottom: 8px; }
+#modale p  { font-size: 13px; color: var(--gris); margin-bottom: 20px; }
+#modale-actions { display: flex; gap: 8px; justify-content: flex-end; }
+</style>
+</head>
+<body>
+
+<!-- Statut connexion -->
+<div id="statut-connexion">⏳ Connexion à Grist en cours…</div>
+
+<!-- Barre d'outils -->
+<div id="toolbar">
+  <h1>📂 Dossiers élèves</h1>
+  <input type="text" id="search" placeholder="🔍 Rechercher…" oninput="filtrer()">
+  <span id="compteur"></span>
+  <button class="btn btn-bleu" onclick="nouveauDossier()">+ Nouveau dossier</button>
+</div>
+
+<!-- Corps -->
+<div id="corps">
+
+  <!-- Liste -->
+  <div id="liste">
+    <div id="liste-items">
+      <div style="padding:20px;text-align:center;color:var(--gris);font-size:12px;">
+        Chargement…
+      </div>
+    </div>
+  </div>
+
+  <!-- Formulaire -->
+  <div id="zone-form">
+    <div id="form-scroll">
+      <div id="etat-vide">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="1.5">
+          <path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
+        </svg>
+        <p>Sélectionner un dossier dans la liste<br>
+           ou cliquer sur <strong>+ Nouveau dossier</strong></p>
+      </div>
+
+      <div id="form-contenu" style="display:none;">
+
+        <!-- Bloc Coordo PAS -->
+        <div class="bloc">
+          <div class="bloc-titre bg-bleu">Coordonnateur PAS</div>
+          <div class="bloc-corps">
+            <div class="grille2">
+              <div class="champ">
+                <label class="lbl">Qui remplit ? *</label>
+                <select id="f-qui-remplit" onchange="onQuiRemplitChange()">
+                  <option value="">— choisir —</option>
+                </select>
+              </div>
+              <div class="champ">
+                <label class="lbl">Année scolaire</label>
+                <input type="text" id="f-annee" class="ro" readonly>
+              </div>
+            </div>
+            <div class="grille2">
+              <div class="champ">
+                <label class="lbl">Territoire PAS</label>
+                <input type="text" id="f-territoire" class="ro" readonly>
+              </div>
+              <div class="champ">
+                <label class="lbl">Secteur PAS</label>
+                <input type="text" id="f-secteur" class="ro" readonly>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bloc Élève -->
+        <div class="bloc">
+          <div class="bloc-titre bg-vert">Élève</div>
+          <div class="bloc-corps">
+            <div class="grille3">
+              <div class="champ">
+                <label class="lbl">1ère lettre nom *</label>
+                <input type="text" id="f-nom" maxlength="1"
+                       oninput="this.value=this.value.toUpperCase();majIdentifiant()">
+              </div>
+              <div class="champ">
+                <label class="lbl">1ère lettre prénom *</label>
+                <input type="text" id="f-prenom" maxlength="1"
+                       oninput="this.value=this.value.toUpperCase();majIdentifiant()">
+              </div>
+              <div class="champ">
+                <label class="lbl">Sexe</label>
+                <select id="f-sexe">
+                  <option value="">—</option>
+                  <option>Garçon</option>
+                  <option>Fille</option>
+                </select>
+              </div>
+            </div>
+            <div class="grille2">
+              <div class="champ">
+                <label class="lbl">Date de naissance *</label>
+                <input type="date" id="f-ddn" onchange="majIdentifiant()">
+              </div>
+              <div class="champ">
+                <label class="lbl">Identifiant élève</label>
+                <input type="text" id="f-identifiant" class="ro" readonly>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bloc Scolarité -->
+        <div class="bloc">
+          <div class="bloc-titre bg-orange">Scolarité</div>
+          <div class="bloc-corps">
+            <div class="grille2">
+              <div class="champ">
+                <label class="lbl">Établissement (UAI)</label>
+                <select id="f-rne">
+                  <option value="">— choisir —</option>
+                </select>
+              </div>
+              <div class="champ">
+                <label class="lbl">Niveau scolaire</label>
+                <select id="f-niveau">
+                  <option value="">— choisir —</option>
+                </select>
+              </div>
+            </div>
+            <div class="grille2">
+              <div class="champ">
+                <label class="lbl">École 1er degré</label>
+                <input type="text" id="f-ecole" class="ro" readonly>
+              </div>
+              <div class="champ">
+                <label class="lbl">Collège / Lycée</label>
+                <input type="text" id="f-college" class="ro" readonly>
+              </div>
+            </div>
+            <div class="grille2">
+              <div class="champ">
+                <label class="lbl">Circonscription</label>
+                <input type="text" id="f-circo" class="ro" readonly>
+              </div>
+              <div class="champ">
+                <label class="lbl">Niveau enseignement</label>
+                <input type="text" id="f-niv-ens" class="ro" readonly>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bloc Accompagnement -->
+        <div class="bloc">
+          <div class="bloc-titre bg-violet">Accompagnement</div>
+          <div class="bloc-corps">
+            <div class="champ">
+              <label class="lbl">Notification ESMS</label>
+              <select id="f-esms">
+                <option value="">—</option>
+                <option>Oui</option>
+                <option>Non</option>
+                <option>En attente</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bloc Saisine -->
+        <div class="bloc">
+          <div class="bloc-titre bg-gris">Saisine PAS</div>
+          <div class="bloc-corps">
+            <div class="grille2">
+              <div class="champ">
+                <label class="lbl">Date saisine</label>
+                <input type="date" id="f-date-saisine">
+              </div>
+              <div class="champ">
+                <label class="lbl">Date commission</label>
+                <input type="date" id="f-date-commission">
+              </div>
+            </div>
+            <div class="grille2">
+              <div class="champ">
+                <label class="lbl">Origine saisine</label>
+                <select id="f-origine">
+                  <option value="">— choisir —</option>
+                </select>
+              </div>
+              <div class="champ">
+                <label class="lbl">Date 1er contact famille</label>
+                <input type="date" id="f-date-famille">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Stats (lecture seule) -->
+        <div class="bloc" id="bloc-stats" style="display:none;">
+          <div class="bloc-titre bg-gris">Informations calculées</div>
+          <div class="bloc-corps">
+            <div class="grille3">
+              <div class="champ">
+                <label class="lbl">Nb interventions</label>
+                <input type="text" id="f-nb-interv" class="ro" readonly>
+              </div>
+              <div class="champ">
+                <label class="lbl">Date 1ère action</label>
+                <input type="text" id="f-date1action" class="ro" readonly>
+              </div>
+              <div class="champ">
+                <label class="lbl">Dossier clôturé</label>
+                <input type="text" id="f-cloture" class="ro" readonly>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /form-contenu -->
+    </div><!-- /form-scroll -->
+
+    <!-- Actions -->
+    <div id="form-actions">
+      <button class="btn btn-bleu"  onclick="sauvegarder()">💾 Enregistrer</button>
+      <button class="btn btn-gris"  onclick="annuler()">Annuler</button>
+      <button class="btn btn-rouge" id="btn-suppr" onclick="demanderSuppression()"
+              style="margin-left:auto;">🗑 Supprimer</button>
+      <div id="msg-form"></div>
+    </div>
+  </div><!-- /zone-form -->
+</div><!-- /corps -->
+
+<!-- Modale suppression -->
+<div id="modale-overlay">
+  <div id="modale">
+    <h2>⚠ Supprimer ce dossier ?</h2>
+    <p id="modale-texte">Cette action est irréversible.</p>
+    <div id="modale-actions">
+      <button class="btn btn-gris"  onclick="fermerModale()">Annuler</button>
+      <button class="btn btn-rouge" onclick="confirmerSuppression()">Supprimer</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── État global ───────────────────────────────────────────────────────────────
+let dossiers     = [];   // tous les dossiers T_dossiers
+let dossiersFiltr = [];  // après filtrage
+let currentId    = null; // ID du dossier en cours
+let isNew        = false;
+let intervenants = [];   // T_pas
+let etabs        = [];   // T_etab
+let niveaux      = [];   // T_niveau
+let origines     = [];   // T_origine_saisine
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+grist.ready({ requiredAccess: 'full' });
+
+setStatut('attente', '⏳ Connexion à Grist…');
+
+// Charger toutes les tables de référence puis les dossiers
+Promise.all([
+  chargerTable('T_pas'),
+  chargerTable('T_etab'),
+  chargerTable('T_niveau'),
+  chargerTable('T_origine_saisine'),
+  chargerTable('T_dossiers'),
+]).then(([pas, etab, niveau, origine, dos]) => {
+  // T_pas
+  intervenants = pas.id.map((id, i) => ({
+    id,
+    nom:       pas.pas_coordo?.[i]     || pas.pas_coordo?.[i] || '',
+    territoire:pas.pas_territoire?.[i] || '',
+    secteur:   pas.pas_secteur?.[i]    || '',
+    type:      pas.pas_type?.[i]       || '',
+  })).filter(p => p.nom).sort((a,b) => a.nom.localeCompare(b.nom,'fr'));
+  remplirSelect('f-qui-remplit', intervenants, p => p.nom + (p.type ? ` (${p.type})` : ''));
+
+  // T_etab
+  etabs = etab.id.map((id, i) => ({
+    id,
+    uai:    etab.etab_uai?.[i]    || '',
+    nom:    etab.etab_nom?.[i]    || '',
+    circo:  etab.etab_circo?.[i]  || '',
+    label:  etab.label?.[i]       || etab.etab_nom?.[i] || '',
+  })).filter(e => e.uai).sort((a,b) => a.label.localeCompare(b.label,'fr'));
+  remplirSelect('f-rne', etabs, e => e.label);
+
+  // T_niveau
+  niveaux = niveau.id.map((id, i) => ({
+    id,
+    niveau:   niveau.niveau?.[i]              || '',
+    niv_ens:  niveau.niveau_enseignement?.[i] || '',
+  })).filter(n => n.niveau);
+  remplirSelect('f-niveau', niveaux, n => n.niveau);
+
+  // T_origine_saisine
+  origines = origine.id.map((id, i) => ({
+    id, label: origine.label?.[i] || ''
+  })).filter(o => o.label);
+  remplirSelect('f-origine', origines, o => o.label);
+
+  // T_dossiers
+  dossiers = extraireDossiers(dos);
+  filtrer();
+  setStatut('ok', `✅ Connecté — ${dossiers.length} dossier(s) chargé(s)`);
+
+}).catch(e => {
+  setStatut('err', '❌ Erreur chargement : ' + (e.message || e));
+});
+
+// ── Helpers API ───────────────────────────────────────────────────────────────
+async function chargerTable(nom) {
+  return grist.docApi.fetchTable(nom);
+}
+
+function extraireDossiers(data) {
+  if (!data || !data.id) return [];
+  return data.id.map((id, i) => ({
+    id,
+    Identifiant_eleve: data.Identifiant_eleve?.[i] || '',
+    Qui_remplit:       data.Qui_remplit?.[i]        || null,
+    Territoire_PAS:    data.Territoire_PAS?.[i]     || '',
+    Secteur_PAS:       data.Secteur_PAS?.[i]        || '',
+    Annee_scolaire:    data.Annee_scolaire?.[i]     || '',
+    Nom_initial:       data.Nom_initial?.[i]         || '',
+    Prenom_initial:    data.Prenom_initial?.[i]      || '',
+    Sexe:              data.Sexe?.[i]                || '',
+    Date_naissance:    data.Date_naissance?.[i]      || null,
+    RNE:               data.RNE?.[i]                 || null,
+    Niveau:            data.Niveau?.[i]              || null,
+    Notification_ESMS: data.Notification_ESMS?.[i]  || '',
+    Date_saisine:      data.Date_saisine?.[i]        || null,
+    Date_commission:   data.Date_commission?.[i]     || null,
+    Origine_saisine:   data.Origine_saisine?.[i]     || null,
+    Date_contact_famille: data.Date_contact_famille?.[i] || null,
+    Nb_interventions:  data.Nb_interventions?.[i]   || 0,
+    Date_1ere_action:  data.Date_1ere_action?.[i]   || null,
+    Cloture_exist:     data.Cloture_exist?.[i]      || false,
+  })).sort((a,b) => a.Identifiant_eleve.localeCompare(b.Identifiant_eleve,'fr'));
+}
+
+// ── Selects ───────────────────────────────────────────────────────────────────
+function remplirSelect(id, items, labelFn) {
+  const sel = document.getElementById(id);
+  const vide = sel.querySelector('option[value=""]');
+  sel.innerHTML = '';
+  if (vide) sel.appendChild(vide.cloneNode(true));
+  else {
+    const o = document.createElement('option');
+    o.value = ''; o.textContent = '— choisir —';
+    sel.appendChild(o);
+  }
+  items.forEach(item => {
+    const o = document.createElement('option');
+    o.value = item.id;
+    o.textContent = labelFn(item);
+    sel.appendChild(o);
+  });
+}
+
+// ── Filtrage et rendu liste ────────────────────────────────────────────────────
+function filtrer() {
+  const q = document.getElementById('search').value.toLowerCase().trim();
+  dossiersFiltr = q
+    ? dossiers.filter(d =>
+        d.Identifiant_eleve.toLowerCase().includes(q) ||
+        d.Secteur_PAS.toLowerCase().includes(q) ||
+        d.Annee_scolaire.toLowerCase().includes(q))
+    : [...dossiers];
+  rendreListe();
+}
+
+function rendreListe() {
+  const cont = document.getElementById('liste-items');
+  document.getElementById('compteur').textContent =
+    `${dossiersFiltr.length} / ${dossiers.length}`;
+
+  if (dossiersFiltr.length === 0) {
+    cont.innerHTML = '<div style="padding:20px;text-align:center;color:var(--gris);font-size:12px;">Aucun dossier</div>';
+    return;
+  }
+  cont.innerHTML = '';
+  dossiersFiltr.forEach(d => {
+    const div = document.createElement('div');
+    div.className = 'dossier-item' +
+      (d.id === currentId ? ' actif' : '') +
+      (d.Cloture_exist   ? ' cloture' : '');
+    div.onclick = () => ouvrirDossier(d.id);
+
+    const badge = d.Cloture_exist
+      ? '<span class="d-badge badge-cloture">Clôturé</span>'
+      : '<span class="d-badge badge-actif">Actif</span>';
+
+    div.innerHTML = `
+      <div class="d-identifiant">${d.Identifiant_eleve || '(sans identifiant)'}</div>
+      <div class="d-meta">
+        ${badge}
+        ${d.Secteur_PAS ? `<span>${d.Secteur_PAS}</span>` : ''}
+        ${d.Annee_scolaire ? `<span>${d.Annee_scolaire}</span>` : ''}
+        ${d.Nb_interventions ? `<span>📋 ${d.Nb_interventions} interv.</span>` : ''}
+      </div>`;
+    cont.appendChild(div);
+  });
+}
+
+// ── Ouvrir un dossier ─────────────────────────────────────────────────────────
+function ouvrirDossier(id) {
+  const d = dossiers.find(x => x.id === id);
+  if (!d) return;
+  currentId = id;
+  isNew = false;
+  remplirFormulaire(d);
+  afficherFormulaire(false);
+  rendreListe();
+}
+
+// ── Nouveau dossier ───────────────────────────────────────────────────────────
+function nouveauDossier() {
+  currentId = null;
+  isNew = true;
+  viderFormulaire();
+  // Année scolaire auto
+  const m = new Date().getMonth() + 1;
+  const y = new Date().getFullYear();
+  const debut = m >= 9 ? y : y - 1;
+  document.getElementById('f-annee').value = `${debut}-${debut+1}`;
+  afficherFormulaire(true);
+  rendreListe();
+}
+
+// ── Formulaire ────────────────────────────────────────────────────────────────
+function afficherFormulaire(nouveau) {
+  document.getElementById('etat-vide').style.display = 'none';
+  document.getElementById('form-contenu').style.display = 'block';
+  document.getElementById('form-actions').style.display = 'flex';
+  document.getElementById('btn-suppr').style.display = nouveau ? 'none' : '';
+  document.getElementById('bloc-stats').style.display = nouveau ? 'none' : '';
+  masquerMsg();
+}
+
+function cacherFormulaire() {
+  currentId = null; isNew = false;
+  document.getElementById('etat-vide').style.display = 'flex';
+  document.getElementById('form-contenu').style.display = 'none';
+  document.getElementById('form-actions').style.display = 'none';
+  rendreListe();
+}
+
+function viderFormulaire() {
+  ['f-qui-remplit','f-rne','f-niveau','f-sexe','f-esms','f-origine'].forEach(id => {
+    document.getElementById(id).value = '';
+  });
+  ['f-nom','f-prenom','f-identifiant','f-territoire','f-secteur',
+   'f-annee','f-ecole','f-college','f-circo','f-niv-ens'].forEach(id => {
+    document.getElementById(id).value = '';
+  });
+  ['f-ddn','f-date-saisine','f-date-commission','f-date-famille'].forEach(id => {
+    document.getElementById(id).value = '';
+  });
+}
+
+function remplirFormulaire(d) {
+  // Coordo
+  document.getElementById('f-qui-remplit').value = d.Qui_remplit ? String(d.Qui_remplit) : '';
+  onQuiRemplitChange(); // remplit territoire/secteur
+  // Si les champs auto sont vides (données déjà en base), on les force
+  if (!document.getElementById('f-territoire').value)
+    document.getElementById('f-territoire').value = d.Territoire_PAS || '';
+  if (!document.getElementById('f-secteur').value)
+    document.getElementById('f-secteur').value = d.Secteur_PAS || '';
+  document.getElementById('f-annee').value = d.Annee_scolaire || '';
+
+  // Élève
+  document.getElementById('f-nom').value    = d.Nom_initial    || '';
+  document.getElementById('f-prenom').value = d.Prenom_initial || '';
+  document.getElementById('f-sexe').value   = d.Sexe           || '';
+  document.getElementById('f-ddn').value    = d.Date_naissance
+    ? tsToDate(d.Date_naissance) : '';
+  majIdentifiant();
+
+  // Scolarité
+  document.getElementById('f-rne').value    = d.RNE    ? String(d.RNE)    : '';
+  document.getElementById('f-niveau').value = d.Niveau ? String(d.Niveau) : '';
+  onRneChange();
+  onNiveauChange();
+
+  // Accompagnement
+  document.getElementById('f-esms').value = d.Notification_ESMS || '';
+
+  // Saisine
+  document.getElementById('f-date-saisine').value    = d.Date_saisine      ? tsToDate(d.Date_saisine)      : '';
+  document.getElementById('f-date-commission').value = d.Date_commission   ? tsToDate(d.Date_commission)   : '';
+  document.getElementById('f-origine').value         = d.Origine_saisine   ? String(d.Origine_saisine)     : '';
+  document.getElementById('f-date-famille').value    = d.Date_contact_famille ? tsToDate(d.Date_contact_famille) : '';
+
+  // Stats
+  document.getElementById('f-nb-interv').value  = d.Nb_interventions || 0;
+  document.getElementById('f-date1action').value = d.Date_1ere_action ? tsToDate(d.Date_1ere_action) : '—';
+  document.getElementById('f-cloture').value     = d.Cloture_exist ? 'Oui' : 'Non';
+}
+
+// ── Champs calculés auto ──────────────────────────────────────────────────────
+function onQuiRemplitChange() {
+  const id = parseInt(document.getElementById('f-qui-remplit').value);
+  const p  = intervenants.find(x => x.id === id);
+  document.getElementById('f-territoire').value = p ? p.territoire : '';
+  document.getElementById('f-secteur').value    = p ? p.secteur    : '';
+}
+
+function onRneChange() {
+  const id = parseInt(document.getElementById('f-rne').value);
+  const e  = etabs.find(x => x.id === id);
+  if (!e) {
+    document.getElementById('f-ecole').value   = '';
+    document.getElementById('f-college').value = '';
+    document.getElementById('f-circo').value   = '';
+    return;
+  }
+  const is2d = e.circo === '2nd DEGRE';
+  document.getElementById('f-ecole').value   = is2d ? '' : e.nom;
+  document.getElementById('f-college').value = is2d ? e.nom : '';
+  document.getElementById('f-circo').value   = e.circo;
+}
+
+function onNiveauChange() {
+  const id = parseInt(document.getElementById('f-niveau').value);
+  const n  = niveaux.find(x => x.id === id);
+  document.getElementById('f-niv-ens').value = n ? n.niv_ens : '';
+}
+
+function majIdentifiant() {
+  const nom    = document.getElementById('f-nom').value.trim().toUpperCase();
+  const prenom = document.getElementById('f-prenom').value.trim().toUpperCase();
+  const ddn    = document.getElementById('f-ddn').value;
+  document.getElementById('f-identifiant').value =
+    (nom || '_') + '_' + (prenom || '_') + '_' + (ddn || '');
+}
+
+// Ajouter les listeners sur les selects scolarité
+document.getElementById('f-rne').addEventListener('change', onRneChange);
+document.getElementById('f-niveau').addEventListener('change', onNiveauChange);
+
+// ── Sauvegarder ───────────────────────────────────────────────────────────────
+async function sauvegarder() {
+  const quiId = parseInt(document.getElementById('f-qui-remplit').value);
+  const nom   = document.getElementById('f-nom').value.trim();
+  const prenom= document.getElementById('f-prenom').value.trim();
+  const ddn   = document.getElementById('f-ddn').value;
+
+  if (!quiId) { afficherMsg('err', '⚠ Veuillez choisir "Qui remplit ?"'); return; }
+  if (!nom)   { afficherMsg('err', '⚠ La 1ère lettre du nom est obligatoire'); return; }
+  if (!prenom){ afficherMsg('err', '⚠ La 1ère lettre du prénom est obligatoire'); return; }
+  if (!ddn)   { afficherMsg('err', '⚠ La date de naissance est obligatoire'); return; }
+
+  const rneVal    = parseInt(document.getElementById('f-rne').value)    || null;
+  const niveauVal = parseInt(document.getElementById('f-niveau').value) || null;
+  const origineVal= parseInt(document.getElementById('f-origine').value)|| null;
+
+  const champs = {
+    Qui_remplit:          quiId,
+    Nom_initial:          nom,
+    Prenom_initial:       prenom,
+    Sexe:                 document.getElementById('f-sexe').value,
+    Date_naissance:       ddn ? dateToTs(ddn) : null,
+    RNE:                  rneVal,
+    Niveau:               niveauVal,
+    Notification_ESMS:    document.getElementById('f-esms').value,
+    Date_saisine:         dateToTs(document.getElementById('f-date-saisine').value),
+    Date_commission:      dateToTs(document.getElementById('f-date-commission').value),
+    Origine_saisine:      origineVal,
+    Date_contact_famille: dateToTs(document.getElementById('f-date-famille').value),
+  };
+
+  try {
+    if (isNew) {
+      await grist.docApi.applyUserActions([
+        ['AddRecord', 'T_dossiers', null, champs]
+      ]);
+      afficherMsg('ok', '✅ Dossier créé');
+    } else {
+      await grist.docApi.applyUserActions([
+        ['UpdateRecord', 'T_dossiers', currentId, champs]
+      ]);
+      afficherMsg('ok', '✅ Dossier mis à jour');
+    }
+    // Recharger
+    const data = await chargerTable('T_dossiers');
+    dossiers = extraireDossiers(data);
+    filtrer();
+    // Si nouveau : sélectionner le dernier créé
+    if (isNew) {
+      const dernier = dossiers[dossiers.length - 1];
+      if (dernier) ouvrirDossier(dernier.id);
+      else cacherFormulaire();
+    } else {
+      rendreListe();
+    }
+  } catch(e) {
+    afficherMsg('err', '❌ Erreur : ' + (e.message || e));
+  }
+}
+
+// ── Suppression ───────────────────────────────────────────────────────────────
+function demanderSuppression() {
+  const d = dossiers.find(x => x.id === currentId);
+  document.getElementById('modale-texte').textContent =
+    `Supprimer le dossier "${d?.Identifiant_eleve || ''}" ? Cette action est irréversible.`;
+  document.getElementById('modale-overlay').classList.add('visible');
+}
+
+function fermerModale() {
+  document.getElementById('modale-overlay').classList.remove('visible');
+}
+
+async function confirmerSuppression() {
+  fermerModale();
+  try {
+    await grist.docApi.applyUserActions([
+      ['RemoveRecord', 'T_dossiers', currentId]
+    ]);
+    cacherFormulaire();
+    const data = await chargerTable('T_dossiers');
+    dossiers = extraireDossiers(data);
+    filtrer();
+    afficherMsg('ok', '✅ Dossier supprimé');
+  } catch(e) {
+    afficherMsg('err', '❌ Erreur suppression : ' + (e.message || e));
+  }
+}
+
+function annuler() { cacherFormulaire(); }
+
+// ── Utilitaires ───────────────────────────────────────────────────────────────
+function tsToDate(ts) {
+  if (!ts) return '';
+  return new Date(ts * 1000).toISOString().split('T')[0];
+}
+
+function dateToTs(str) {
+  if (!str) return null;
+  return Math.floor(new Date(str + 'T00:00:00Z').getTime() / 1000);
+}
+
+function setStatut(type, msg) {
+  const el = document.getElementById('statut-connexion');
+  el.textContent = msg;
+  el.className = type;
+}
+
+function afficherMsg(type, msg) {
+  const el = document.getElementById('msg-form');
+  el.textContent = msg;
+  el.className = type;
+  setTimeout(() => masquerMsg(), 4000);
+}
+
+function masquerMsg() {
+  const el = document.getElementById('msg-form');
+  el.className = ''; el.textContent = '';
+}
+</script>
+</body>
+</html>

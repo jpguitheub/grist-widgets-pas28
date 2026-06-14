@@ -1,1 +1,1166 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Suivi BEP PAS</title>
+<script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+<style>
+:root {
+  --bleu:    #2563eb; --bleu-cl: #dbeafe;
+  --vert:    #16a34a; --vert-cl: #dcfce7;
+  --rouge:   #dc2626; --rouge-cl:#fee2e2;
+  --orange:  #ea580c; --orange-cl:#ffedd5;
+  --violet:  #7c3aed; --violet-cl:#ede9fe;
+  --gris:    #6b7280; --gris-cl: #f3f4f6;
+  --bord:    #e5e7eb; --texte:   #111827;
+  --rayon:   6px;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;
+  color:var(--texte);background:#f9fafb;height:100vh;
+  display:flex;flex-direction:column;overflow:hidden;}
 
+/* ── Bandeau statut ── */
+#statut{padding:5px 14px;font-size:11px;font-weight:600;
+  background:#fef3c7;color:#92400e;border-bottom:1px solid #fde68a;flex-shrink:0;}
+#statut.ok {background:var(--vert-cl);color:#15803d;border-color:#86efac;}
+#statut.err{background:var(--rouge-cl);color:var(--rouge);border-color:#fca5a5;}
+
+/* ── Onglets navigation ── */
+#onglets{display:flex;background:white;border-bottom:2px solid var(--bord);
+  flex-shrink:0;padding:0 12px;gap:4px;}
+.onglet{padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer;
+  border-bottom:3px solid transparent;margin-bottom:-2px;color:var(--gris);
+  transition:all .15s;}
+.onglet:hover{color:var(--texte);}
+.onglet.actif{color:var(--bleu);border-bottom-color:var(--bleu);}
+
+/* ── Pages ── */
+.page{display:none;flex:1;overflow:hidden;flex-direction:column;}
+.page.visible{display:flex;}
+
+/* ── Barre outils commune ── */
+.toolbar{display:flex;align-items:center;gap:8px;padding:8px 12px;
+  background:white;border-bottom:1px solid var(--bord);flex-shrink:0;}
+.toolbar h2{font-size:13px;font-weight:700;margin-right:auto;}
+input.search{border:1px solid var(--bord);border-radius:var(--rayon);
+  padding:5px 10px;font-size:12px;width:180px;}
+input.search:focus{outline:none;border-color:var(--bleu);}
+.compteur{font-size:11px;color:var(--gris);white-space:nowrap;}
+
+/* ── Layout liste + formulaire ── */
+.layout{display:flex;flex:1;overflow:hidden;}
+
+/* ── Liste ── */
+.liste{width:300px;min-width:240px;border-right:1px solid var(--bord);
+  display:flex;flex-direction:column;background:white;flex-shrink:0;}
+.liste-items{flex:1;overflow-y:auto;}
+
+.item{padding:9px 12px;border-bottom:1px solid var(--bord);
+  cursor:pointer;transition:background .1s;}
+.item:hover{background:var(--gris-cl);}
+.item.actif{background:var(--bleu-cl);border-left:3px solid var(--bleu);}
+.item-titre{font-weight:700;font-size:12px;}
+.item-meta{font-size:11px;color:var(--gris);margin-top:2px;
+  display:flex;gap:6px;flex-wrap:wrap;align-items:center;}
+.badge{display:inline-block;font-size:10px;padding:1px 7px;
+  border-radius:9px;font-weight:600;}
+.badge-actif  {background:var(--vert-cl); color:var(--vert);}
+.badge-cloture{background:var(--gris-cl); color:var(--gris);}
+.badge-coordo {background:var(--bleu-cl); color:var(--bleu);}
+.badge-ressen {background:#fef9c3;color:#854d0e;}
+.badge-educ   {background:var(--vert-cl); color:var(--vert);}
+.badge-emapas {background:var(--violet-cl);color:var(--violet);}
+
+/* ── Zone formulaire ── */
+.zone-form{flex:1;display:flex;flex-direction:column;overflow:hidden;}
+.form-scroll{flex:1;overflow-y:auto;padding:14px;}
+
+.etat-vide{display:flex;flex-direction:column;align-items:center;
+  justify-content:center;height:100%;color:var(--gris);text-align:center;gap:10px;}
+.etat-vide svg{opacity:.2;}
+.etat-vide p{font-size:13px;line-height:1.5;}
+
+/* ── Blocs formulaire ── */
+.bloc{background:white;border:1px solid var(--bord);
+  border-radius:var(--rayon);margin-bottom:10px;overflow:hidden;}
+.bloc-titre{padding:6px 14px;font-weight:700;font-size:11px;
+  text-transform:uppercase;letter-spacing:.05em;color:white;}
+.bg-bleu  {background:var(--bleu);}
+.bg-vert  {background:#15803d;}
+.bg-orange{background:var(--orange);}
+.bg-violet{background:var(--violet);}
+.bg-gris  {background:#4b5563;}
+.bg-rouge {background:var(--rouge);}
+.bloc-corps{padding:10px 14px;}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;}
+
+.champ{margin-bottom:8px;}
+.champ:last-child{margin-bottom:0;}
+label.lbl{display:block;font-size:10px;font-weight:700;color:var(--gris);
+  margin-bottom:2px;text-transform:uppercase;letter-spacing:.04em;}
+
+input[type=text],input[type=date],select,textarea{
+  width:100%;border:1px solid var(--bord);border-radius:var(--rayon);
+  padding:5px 8px;font-size:12px;font-family:inherit;
+  color:var(--texte);background:white;transition:border-color .15s;}
+input:focus,select:focus,textarea:focus{
+  outline:none;border-color:var(--bleu);box-shadow:0 0 0 2px var(--bleu-cl);}
+textarea{resize:vertical;min-height:48px;}
+.ro{background:var(--gris-cl)!important;color:var(--gris);cursor:default;}
+
+/* ── Toggles ── */
+.toggles{display:flex;flex-wrap:wrap;gap:5px;}
+.tgl{display:inline-flex;align-items:center;gap:4px;cursor:pointer;
+  padding:4px 10px;border:1px solid var(--bord);border-radius:20px;
+  font-size:11px;font-weight:500;color:var(--gris);background:white;
+  transition:all .15s;user-select:none;}
+.tgl input{display:none;}
+.tgl:hover{border-color:var(--bleu);color:var(--bleu);}
+.tgl.on{background:var(--vert-cl);border-color:var(--vert);color:var(--vert);}
+
+/* ── Alerte cohérence ── */
+.alerte-coherence{display:none;padding:6px 10px;background:var(--rouge-cl);
+  border:1px solid #fca5a5;border-radius:var(--rayon);color:var(--rouge);
+  font-size:11px;font-weight:600;margin-bottom:8px;}
+
+/* ── Barre actions ── */
+.form-actions{display:none;gap:8px;padding:8px 14px;background:white;
+  border-top:1px solid var(--bord);flex-shrink:0;align-items:center;}
+.btn{padding:6px 14px;border-radius:var(--rayon);font-size:12px;
+  font-weight:600;cursor:pointer;border:none;transition:background .15s;}
+.btn-bleu {background:var(--bleu); color:white;}
+.btn-bleu:hover{background:#1d4ed8;}
+.btn-rouge{background:var(--rouge);color:white;}
+.btn-rouge:hover{background:#b91c1c;}
+.btn-gris {background:var(--gris-cl);color:var(--texte);}
+.btn-gris:hover{background:#e5e7eb;}
+.msg-action{font-size:11px;padding:4px 8px;border-radius:var(--rayon);display:none;}
+.msg-action.ok {display:block;background:var(--vert-cl); color:var(--vert);}
+.msg-action.err{display:block;background:var(--rouge-cl);color:var(--rouge);}
+
+/* ── Séparateur interventions ── */
+.interv-header{display:flex;align-items:center;justify-content:space-between;
+  padding:8px 14px;background:var(--gris-cl);border-bottom:1px solid var(--bord);}
+.interv-header span{font-size:11px;font-weight:700;text-transform:uppercase;
+  letter-spacing:.04em;color:var(--gris);}
+
+/* ── Modale ── */
+#overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);
+  z-index:300;align-items:center;justify-content:center;}
+#overlay.v{display:flex;}
+#modale{background:white;border-radius:8px;padding:22px;max-width:380px;
+  width:90%;box-shadow:0 20px 60px rgba(0,0,0,.3);}
+#modale h3{font-size:15px;margin-bottom:8px;}
+#modale p{font-size:12px;color:var(--gris);margin-bottom:18px;}
+#modale-btns{display:flex;gap:8px;justify-content:flex-end;}
+</style>
+</head>
+<body>
+
+<div id="statut">⏳ Chargement…</div>
+
+<!-- Onglets -->
+<div id="onglets">
+  <div class="onglet actif" onclick="afficherPage('dossiers')">📂 Dossiers</div>
+  <div class="onglet" id="onglet-interv" onclick="afficherPage('interventions')" style="display:none;">
+    ✏️ Interventions — <span id="onglet-eleve"></span>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     PAGE DOSSIERS
+═══════════════════════════════════════════════════════════════ -->
+<div class="page visible" id="page-dossiers">
+  <div class="toolbar">
+    <h2>📂 Dossiers élèves</h2>
+    <input class="search" id="dos-search" placeholder="🔍 Rechercher…" oninput="filtrerDossiers()">
+    <span class="compteur" id="dos-compteur"></span>
+    <button class="btn btn-bleu" onclick="nouveauDossier()">+ Nouveau</button>
+  </div>
+  <div class="layout">
+    <div class="liste">
+      <div class="liste-items" id="dos-liste"></div>
+    </div>
+    <div class="zone-form">
+      <div class="form-scroll" id="dos-form-scroll">
+        <div class="etat-vide" id="dos-vide">
+          <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
+          </svg>
+          <p>Sélectionner un dossier<br>ou cliquer sur <strong>+ Nouveau</strong></p>
+        </div>
+        <div id="dos-form" style="display:none;">
+
+          <!-- Coordo -->
+          <div class="bloc">
+            <div class="bloc-titre bg-bleu">Coordonnateur PAS</div>
+            <div class="bloc-corps">
+              <div class="g2">
+                <div class="champ">
+                  <label class="lbl">Qui remplit ? *</label>
+                  <select id="d-qui" onchange="onDosQuiChange()"><option value="">— choisir —</option></select>
+                </div>
+                <div class="champ">
+                  <label class="lbl">Année scolaire</label>
+                  <input type="text" id="d-annee" class="ro" readonly>
+                </div>
+              </div>
+              <div class="g2">
+                <div class="champ">
+                  <label class="lbl">Territoire PAS</label>
+                  <input type="text" id="d-territoire" class="ro" readonly>
+                </div>
+                <div class="champ">
+                  <label class="lbl">Secteur PAS</label>
+                  <input type="text" id="d-secteur" class="ro" readonly>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Élève -->
+          <div class="bloc">
+            <div class="bloc-titre bg-vert">Élève</div>
+            <div class="bloc-corps">
+              <div class="g3">
+                <div class="champ">
+                  <label class="lbl">1ère lettre nom *</label>
+                  <input type="text" id="d-nom" maxlength="1"
+                    oninput="this.value=this.value.toUpperCase();majId()">
+                </div>
+                <div class="champ">
+                  <label class="lbl">1ère lettre prénom *</label>
+                  <input type="text" id="d-prenom" maxlength="1"
+                    oninput="this.value=this.value.toUpperCase();majId()">
+                </div>
+                <div class="champ">
+                  <label class="lbl">Sexe</label>
+                  <select id="d-sexe">
+                    <option value="">—</option>
+                    <option>Garçon</option><option>Fille</option>
+                  </select>
+                </div>
+              </div>
+              <div class="g2">
+                <div class="champ">
+                  <label class="lbl">Date de naissance *</label>
+                  <input type="date" id="d-ddn" onchange="majId()">
+                </div>
+                <div class="champ">
+                  <label class="lbl">Identifiant élève</label>
+                  <input type="text" id="d-identifiant" class="ro" readonly>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Scolarité -->
+          <div class="bloc">
+            <div class="bloc-titre bg-orange">Scolarité</div>
+            <div class="bloc-corps">
+              <div class="g2">
+                <div class="champ">
+                  <label class="lbl">Établissement (UAI)</label>
+                  <select id="d-rne" onchange="onDosRneChange()"><option value="">— choisir —</option></select>
+                </div>
+                <div class="champ">
+                  <label class="lbl">Niveau scolaire</label>
+                  <select id="d-niveau" onchange="onDosNiveauChange()"><option value="">— choisir —</option></select>
+                </div>
+              </div>
+              <div class="g2">
+                <div class="champ">
+                  <label class="lbl">École 1er degré</label>
+                  <input type="text" id="d-ecole" class="ro" readonly>
+                </div>
+                <div class="champ">
+                  <label class="lbl">Collège / Lycée</label>
+                  <input type="text" id="d-college" class="ro" readonly>
+                </div>
+              </div>
+              <div class="g2">
+                <div class="champ">
+                  <label class="lbl">Circonscription</label>
+                  <input type="text" id="d-circo" class="ro" readonly>
+                </div>
+                <div class="champ">
+                  <label class="lbl">Niveau enseignement</label>
+                  <input type="text" id="d-nivens" class="ro" readonly>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Accompagnement -->
+          <div class="bloc">
+            <div class="bloc-titre bg-violet">Accompagnement</div>
+            <div class="bloc-corps">
+              <div class="champ">
+                <label class="lbl">Notification ESMS</label>
+                <select id="d-esms">
+                  <option value="">—</option>
+                  <option>Oui</option><option>Non</option><option>En attente</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- Saisine -->
+          <div class="bloc">
+            <div class="bloc-titre bg-gris">Saisine PAS</div>
+            <div class="bloc-corps">
+              <div class="g2">
+                <div class="champ">
+                  <label class="lbl">Date saisine</label>
+                  <input type="date" id="d-saisine">
+                </div>
+                <div class="champ">
+                  <label class="lbl">Date commission</label>
+                  <input type="date" id="d-commission">
+                </div>
+              </div>
+              <div class="g2">
+                <div class="champ">
+                  <label class="lbl">Origine saisine</label>
+                  <select id="d-origine"><option value="">— choisir —</option></select>
+                </div>
+                <div class="champ">
+                  <label class="lbl">Date 1er contact famille</label>
+                  <input type="date" id="d-famille">
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Stats (dossier existant) -->
+          <div class="bloc" id="d-bloc-stats" style="display:none;">
+            <div class="bloc-titre bg-gris">Informations calculées</div>
+            <div class="bloc-corps">
+              <div class="g3">
+                <div class="champ">
+                  <label class="lbl">Nb interventions</label>
+                  <input type="text" id="d-nb-interv" class="ro" readonly>
+                </div>
+                <div class="champ">
+                  <label class="lbl">Date 1ère action</label>
+                  <input type="text" id="d-date1action" class="ro" readonly>
+                </div>
+                <div class="champ">
+                  <label class="lbl">Clôturé</label>
+                  <input type="text" id="d-cloture" class="ro" readonly>
+                </div>
+              </div>
+              <div style="margin-top:8px;">
+                <button class="btn btn-bleu" onclick="allerInterventions()"
+                  style="font-size:11px;padding:5px 12px;">
+                  ✏️ Gérer les interventions →
+                </button>
+              </div>
+            </div>
+          </div>
+
+        </div><!-- /dos-form -->
+      </div><!-- /form-scroll -->
+      <div class="form-actions" id="dos-actions">
+        <button class="btn btn-bleu"  onclick="sauvegarderDossier()">💾 Enregistrer</button>
+        <button class="btn btn-gris"  onclick="annulerDossier()">Annuler</button>
+        <button class="btn btn-rouge" id="dos-btn-suppr"
+          onclick="demanderSuppr('dossier')" style="margin-left:auto;">🗑 Supprimer</button>
+        <div class="msg-action" id="dos-msg"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     PAGE INTERVENTIONS
+═══════════════════════════════════════════════════════════════ -->
+<div class="page" id="page-interventions">
+  <div class="toolbar">
+    <button class="btn btn-gris" onclick="retourDossiers()" style="padding:5px 10px;">← Dossiers</button>
+    <h2 id="interv-titre">Interventions</h2>
+    <span class="compteur" id="interv-compteur"></span>
+    <button class="btn btn-bleu" onclick="nouvelleIntervention()">+ Nouvelle</button>
+  </div>
+  <div class="layout">
+    <!-- Liste interventions -->
+    <div class="liste">
+      <div class="liste-items" id="interv-liste"></div>
+    </div>
+    <!-- Formulaire intervention -->
+    <div class="zone-form">
+      <div class="form-scroll">
+        <div class="etat-vide" id="interv-vide">
+          <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+          </svg>
+          <p>Sélectionner une intervention<br>ou cliquer sur <strong>+ Nouvelle</strong></p>
+        </div>
+        <div id="interv-form" style="display:none;">
+
+          <div class="alerte-coherence" id="i-alerte"></div>
+
+          <!-- Identification -->
+          <div class="bloc">
+            <div class="bloc-titre bg-bleu">1 — Identification</div>
+            <div class="bloc-corps">
+              <div class="g2">
+                <div class="champ">
+                  <label class="lbl">Date *</label>
+                  <input type="date" id="i-date">
+                </div>
+                <div class="champ">
+                  <label class="lbl">Durée (minutes)</label>
+                  <select id="i-duree">
+                    <option value="">— choisir —</option>
+                    <option>15</option><option>30</option><option>45</option>
+                    <option>60</option><option>75</option><option>90</option>
+                    <option>105</option><option>120</option><option>135</option>
+                    <option>150</option><option>165</option><option>180</option>
+                    <option>195</option><option>210</option><option>225</option>
+                    <option>240</option>
+                  </select>
+                </div>
+              </div>
+              <div class="champ">
+                <label class="lbl">Intervenant</label>
+                <select id="i-intervenant"><option value="">— choisir —</option></select>
+              </div>
+              <div class="champ">
+                <label class="lbl">Type d'intervenant *</label>
+                <select id="i-type" onchange="onIntervTypeChange()">
+                  <option value="">— choisir —</option>
+                  <option>Coordo</option><option>Ressource EN</option>
+                  <option>Educ PAS</option><option>EMAPAS</option>
+                </select>
+              </div>
+              <div class="champ" id="i-cond-ressource" style="display:none;">
+                <label class="lbl">Intervenant Ressource EN *</label>
+                <select id="i-ressource-en">
+                  <option value="">— préciser —</option>
+                  <option>AED</option><option>AESH référent</option>
+                  <option>Assistante sociale</option><option>Autre</option>
+                  <option>Coordo ULIS</option><option>CPC</option>
+                  <option>Dispositif relais</option><option>Enseignant référent</option>
+                  <option>Enseignant spécialisé</option><option>ERUN</option>
+                  <option>Infirmière</option><option>PRTND</option>
+                  <option>Psy EN</option><option>RASED</option>
+                </select>
+              </div>
+              <div class="champ" id="i-cond-emapas" style="display:none;">
+                <label class="lbl">Intervenant EMAPAS *</label>
+                <select id="i-emapas">
+                  <option value="">— préciser —</option>
+                  <option>Ergo</option><option>Neuropsy</option>
+                  <option>Educ comportement défi</option>
+                  <option>Psychomot</option><option>Psy</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- Nature -->
+          <div class="bloc">
+            <div class="bloc-titre bg-vert">2 — Nature de l'intervention</div>
+            <div class="bloc-corps">
+              <div class="toggles">
+                <label class="tgl" id="tgl-hors"><input type="checkbox" id="i-hors" onchange="tglStyle(this,'tgl-hors')">Hors secteur</label>
+                <label class="tgl" id="tgl-aesh"><input type="checkbox" id="i-aesh" onchange="tglStyle(this,'tgl-aesh')">Régulation AESH</label>
+                <label class="tgl" id="tgl-obs" ><input type="checkbox" id="i-obs"  onchange="tglStyle(this,'tgl-obs')">Observation classe</label>
+                <label class="tgl" id="tgl-equi"><input type="checkbox" id="i-equi" onchange="tglStyle(this,'tgl-equi')">Action équipe péda</label>
+                <label class="tgl" id="tgl-elev"><input type="checkbox" id="i-elev" onchange="tglStyle(this,'tgl-elev')">Action directe élève</label>
+                <label class="tgl" id="tgl-fam" ><input type="checkbox" id="i-fam"  onchange="tglStyle(this,'tgl-fam')">Intervention famille</label>
+              </div>
+            </div>
+          </div>
+
+          <!-- Ressources -->
+          <div class="bloc">
+            <div class="bloc-titre bg-orange">3 — Ressources et matériel</div>
+            <div class="bloc-corps">
+              <div class="champ">
+                <label class="lbl">Autres ressources sollicitées</label>
+                <div style="display:flex;flex-wrap:wrap;gap:4px;" id="i-chips"></div>
+                <select id="i-ressources" multiple size="4"
+                  style="margin-top:6px;width:100%;border:1px solid var(--bord);
+                  border-radius:var(--rayon);padding:4px;font-size:12px;"
+                  onchange="rendreCHips()">
+                  <option>Autre</option><option>CAMSP</option><option>CDLA</option>
+                  <option>CRIP</option><option>Libéral</option><option>SPIJ</option>
+                  <option>CMPP</option><option>AS de secteur</option>
+                  <option>PMI</option><option>PCO</option>
+                </select>
+                <div style="font-size:10px;color:var(--gris);margin-top:3px;">
+                  Ctrl+clic pour sélection multiple
+                </div>
+              </div>
+              <div class="g2" style="margin-top:8px;">
+                <label class="tgl" id="tgl-mpa"  style="justify-content:flex-start;">
+                  <input type="checkbox" id="i-mpa"  onchange="tglStyle(this,'tgl-mpa')">Matériel MPA prêté</label>
+                <label class="tgl" id="tgl-petit" style="justify-content:flex-start;">
+                  <input type="checkbox" id="i-petit" onchange="tglStyle(this,'tgl-petit')">Petit matériel prêté</label>
+              </div>
+              <div class="champ" style="margin-top:8px;">
+                <label class="lbl">Commentaire matériel</label>
+                <textarea id="i-comm-mat" rows="2"></textarea>
+              </div>
+            </div>
+          </div>
+
+          <!-- Commentaire -->
+          <div class="bloc">
+            <div class="bloc-titre bg-gris">4 — Commentaire libre</div>
+            <div class="bloc-corps">
+              <textarea id="i-commentaire" rows="3"
+                placeholder="Observations, suite à donner…"></textarea>
+            </div>
+          </div>
+
+        </div><!-- /interv-form -->
+      </div><!-- /form-scroll -->
+      <div class="form-actions" id="interv-actions">
+        <button class="btn btn-bleu"  onclick="sauvegarderIntervention()">💾 Enregistrer</button>
+        <button class="btn btn-gris"  onclick="annulerIntervention()">Annuler</button>
+        <button class="btn btn-rouge" id="interv-btn-suppr"
+          onclick="demanderSuppr('intervention')" style="margin-left:auto;">🗑 Supprimer</button>
+        <div class="msg-action" id="interv-msg"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modale confirmation -->
+<div id="overlay">
+  <div id="modale">
+    <h3 id="modale-titre">Confirmer la suppression</h3>
+    <p id="modale-texte"></p>
+    <div id="modale-btns">
+      <button class="btn btn-gris"  onclick="fermerModale()">Annuler</button>
+      <button class="btn btn-rouge" onclick="confirmerSuppr()">Supprimer</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+// ÉTAT GLOBAL
+// ═══════════════════════════════════════════════════════════════
+let dossiers      = [];
+let dossiersFiltr = [];
+let interventions = [];   // interventions du dossier courant
+let intervenants  = [];   // T_pas
+let etabs         = [];   // T_etab
+let niveaux       = [];   // T_niveau
+let origines      = [];   // T_origine_saisine
+
+let dossierId     = null; // dossier sélectionné
+let intervId      = null; // intervention sélectionnée
+let dosIsNew      = false;
+let intervIsNew   = false;
+let supprCible    = null; // 'dossier' | 'intervention'
+
+// ═══════════════════════════════════════════════════════════════
+// INIT GRIST
+// ═══════════════════════════════════════════════════════════════
+grist.ready({ requiredAccess: 'full' });
+setStatut('attente', '⏳ Chargement des données…');
+
+Promise.all([
+  grist.docApi.fetchTable('T_pas'),
+  grist.docApi.fetchTable('T_etab'),
+  grist.docApi.fetchTable('T_niveau'),
+  grist.docApi.fetchTable('T_origine_saisine'),
+  grist.docApi.fetchTable('T_dossiers'),
+]).then(([pas, etab, niv, ori, dos]) => {
+  // T_pas
+  intervenants = pas.id.map((id,i) => ({
+    id,
+    nom:        pas.pas_coordo?.[i]     || '',
+    territoire: pas.pas_territoire?.[i] || '',
+    secteur:    pas.pas_secteur?.[i]    || '',
+    type:       pas.pas_type?.[i]       || '',
+  })).filter(p=>p.nom).sort((a,b)=>a.nom.localeCompare(b.nom,'fr'));
+  fillSelect('d-qui',       intervenants, p=>`${p.nom} (${p.type})`);
+  fillSelect('i-intervenant', intervenants, p=>`${p.nom} (${p.type})`);
+
+  // T_etab
+  etabs = etab.id.map((id,i) => ({
+    id,
+    uai:   etab.etab_uai?.[i]   || '',
+    nom:   etab.etab_nom?.[i]   || '',
+    circo: etab.etab_circo?.[i] || '',
+    label: etab.label?.[i]      || etab.etab_nom?.[i] || '',
+  })).filter(e=>e.uai).sort((a,b)=>a.label.localeCompare(b.label,'fr'));
+  fillSelect('d-rne', etabs, e=>e.label);
+
+  // T_niveau
+  niveaux = niv.id.map((id,i) => ({
+    id,
+    niveau:  niv.niveau?.[i]              || '',
+    niv_ens: niv.niveau_enseignement?.[i] || '',
+  })).filter(n=>n.niveau);
+  fillSelect('d-niveau', niveaux, n=>n.niveau);
+
+  // T_origine_saisine
+  origines = ori.id.map((id,i) => ({
+    id, label: ori.label?.[i] || ''
+  })).filter(o=>o.label);
+  fillSelect('d-origine', origines, o=>o.label);
+
+  // T_dossiers
+  dossiers = parseDossiers(dos);
+  filtrerDossiers();
+  setStatut('ok', `✅ ${dossiers.length} dossier(s) chargé(s)`);
+
+}).catch(e => {
+  setStatut('err', '❌ Erreur chargement : ' + (e.message || e));
+});
+
+// ═══════════════════════════════════════════════════════════════
+// UTILITAIRES
+// ═══════════════════════════════════════════════════════════════
+function ts2date(ts){ return ts ? new Date(ts*1000).toISOString().split('T')[0] : ''; }
+function date2ts(s) { return s  ? Math.floor(new Date(s+'T00:00:00Z').getTime()/1000) : null; }
+function v(id){ return document.getElementById(id); }
+function setV(id,val){ const el=v(id); if(el) el.value = val??''; }
+function setStatut(type,msg){ const el=v('statut'); el.textContent=msg; el.className=type==='attente'?'':type; }
+
+function fillSelect(id, items, labelFn){
+  const sel = v(id);
+  const first = sel.querySelector('option[value=""]');
+  sel.innerHTML = '';
+  const opt = document.createElement('option'); opt.value=''; opt.textContent='— choisir —';
+  sel.appendChild(opt);
+  items.forEach(item => {
+    const o = document.createElement('option');
+    o.value = item.id; o.textContent = labelFn(item);
+    sel.appendChild(o);
+  });
+}
+
+function parseDossiers(data){
+  if(!data?.id) return [];
+  return data.id.map((id,i)=>({
+    id,
+    Identifiant_eleve:    data.Identifiant_eleve?.[i]    || '',
+    Qui_remplit:          data.Qui_remplit?.[i]           || null,
+    Territoire_PAS:       data.Territoire_PAS?.[i]        || '',
+    Secteur_PAS:          data.Secteur_PAS?.[i]           || '',
+    Annee_scolaire:       data.Annee_scolaire?.[i]        || '',
+    Nom_initial:          data.Nom_initial?.[i]           || '',
+    Prenom_initial:       data.Prenom_initial?.[i]        || '',
+    Sexe:                 data.Sexe?.[i]                  || '',
+    Date_naissance:       data.Date_naissance?.[i]        || null,
+    RNE:                  data.RNE?.[i]                   || null,
+    Niveau:               data.Niveau?.[i]                || null,
+    Notification_ESMS:    data.Notification_ESMS?.[i]     || '',
+    Date_saisine:         data.Date_saisine?.[i]          || null,
+    Date_commission:      data.Date_commission?.[i]       || null,
+    Origine_saisine:      data.Origine_saisine?.[i]       || null,
+    Date_contact_famille: data.Date_contact_famille?.[i]  || null,
+    Nb_interventions:     data.Nb_interventions?.[i]      || 0,
+    Date_1ere_action:     data.Date_1ere_action?.[i]      || null,
+    Cloture_exist:        data.Cloture_exist?.[i]         || false,
+  })).sort((a,b)=>a.Identifiant_eleve.localeCompare(b.Identifiant_eleve,'fr'));
+}
+
+function parseInterventions(data, dId){
+  if(!data?.id) return [];
+  return data.id.map((id,i)=>({
+    id,
+    dossier:                     data.dossier?.[i]                     || null,
+    date:                        data.date?.[i]                        || null,
+    intervenant:                 data.intervenant?.[i]                 || null,
+    type_intervention:           data.type_intervention?.[i]           || '',
+    intervenant_ressource_en:    data.intervenant_ressource_en?.[i]    || '',
+    intervenant_EMAPAS:          data.intervenant_EMAPAS?.[i]          || '',
+    duree_minutes:               data.duree_minutes?.[i]               || '',
+    hors_secteur:                data.hors_secteur?.[i]                || false,
+    regulation_aesh:             data.regulation_aesh?.[i]             || false,
+    observation_classe:          data.observation_classe?.[i]          || false,
+    action_equipe:               data.action_equipe?.[i]               || false,
+    directe_eleve:               data.directe_eleve?.[i]               || false,
+    interv_famille:              data.interv_famille?.[i]              || false,
+    autres_ressources_sollicitees: data.autres_ressources_sollicitees?.[i] || [],
+    MPA:                         data.MPA?.[i]                         || false,
+    petit_materiel:              data.petit_materiel?.[i]              || false,
+    commentaire_materiel:        data.commentaire_materiel?.[i]        || '',
+    commentaire:                 data.commentaire?.[i]                 || '',
+  })).filter(r=>r.dossier===dId)
+     .sort((a,b)=>(b.date||0)-(a.date||0));
+}
+
+// ═══════════════════════════════════════════════════════════════
+// NAVIGATION PAGES
+// ═══════════════════════════════════════════════════════════════
+function afficherPage(nom){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('visible'));
+  document.querySelectorAll('.onglet').forEach(o=>o.classList.remove('actif'));
+  v('page-'+nom).classList.add('visible');
+  const idx = nom==='dossiers' ? 0 : 1;
+  document.querySelectorAll('.onglet')[idx].classList.add('actif');
+}
+
+async function allerInterventions(){
+  if(!dossierId) return;
+  const dos = dossiers.find(d=>d.id===dossierId);
+  v('interv-titre').textContent = `Interventions — ${dos?.Identifiant_eleve||''}`;
+  v('onglet-eleve').textContent = dos?.Identifiant_eleve||'';
+  v('onglet-interv').style.display = '';
+  // Charger les interventions
+  const data = await grist.docApi.fetchTable('T_interventions');
+  interventions = parseInterventions(data, dossierId);
+  rendreListeInterv();
+  cacherFormInterv();
+  afficherPage('interventions');
+}
+
+function retourDossiers(){
+  afficherPage('dossiers');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// DOSSIERS — LISTE
+// ═══════════════════════════════════════════════════════════════
+function filtrerDossiers(){
+  const q = v('dos-search').value.toLowerCase().trim();
+  dossiersFiltr = q
+    ? dossiers.filter(d=>
+        d.Identifiant_eleve.toLowerCase().includes(q)||
+        d.Secteur_PAS.toLowerCase().includes(q)||
+        d.Annee_scolaire.toLowerCase().includes(q))
+    : [...dossiers];
+  rendreListe();
+}
+
+function rendreListe(){
+  const cont = v('dos-liste');
+  v('dos-compteur').textContent = `${dossiersFiltr.length}/${dossiers.length}`;
+  if(!dossiersFiltr.length){
+    cont.innerHTML='<div style="padding:16px;text-align:center;color:var(--gris);font-size:12px;">Aucun dossier</div>';
+    return;
+  }
+  cont.innerHTML='';
+  dossiersFiltr.forEach(d=>{
+    const div=document.createElement('div');
+    div.className='item'+(d.id===dossierId?' actif':'');
+    div.onclick=()=>ouvrirDossier(d.id);
+    const badge=d.Cloture_exist
+      ?'<span class="badge badge-cloture">Clôturé</span>'
+      :'<span class="badge badge-actif">Actif</span>';
+    div.innerHTML=`
+      <div class="item-titre">${d.Identifiant_eleve||'(sans id)'}</div>
+      <div class="item-meta">
+        ${badge}
+        ${d.Secteur_PAS?`<span>${d.Secteur_PAS}</span>`:''}
+        ${d.Annee_scolaire?`<span>${d.Annee_scolaire}</span>`:''}
+        ${d.Nb_interventions?`<span>📋 ${d.Nb_interventions}</span>`:''}
+      </div>`;
+    cont.appendChild(div);
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// DOSSIERS — FORMULAIRE
+// ═══════════════════════════════════════════════════════════════
+function ouvrirDossier(id){
+  dossierId=id; dosIsNew=false;
+  const d=dossiers.find(x=>x.id===id);
+  remplirFormDossier(d);
+  afficherFormDossier(false);
+  rendreListe();
+}
+
+function nouveauDossier(){
+  dossierId=null; dosIsNew=true;
+  viderFormDossier();
+  const m=new Date().getMonth()+1, y=new Date().getFullYear();
+  const debut=m>=9?y:y-1;
+  setV('d-annee',`${debut}-${debut+1}`);
+  afficherFormDossier(true);
+  rendreListe();
+}
+
+function afficherFormDossier(nouveau){
+  v('dos-vide').style.display='none';
+  v('dos-form').style.display='block';
+  v('dos-actions').style.display='flex';
+  v('dos-btn-suppr').style.display=nouveau?'none':'';
+  v('d-bloc-stats').style.display=nouveau?'none':'';
+  masquerMsg('dos-msg');
+}
+
+function cacherFormDossier(){
+  dossierId=null; dosIsNew=false;
+  v('dos-vide').style.display='flex';
+  v('dos-form').style.display='none';
+  v('dos-actions').style.display='none';
+  rendreListe();
+}
+
+function annulerDossier(){ cacherFormDossier(); }
+
+function viderFormDossier(){
+  ['d-qui','d-rne','d-niveau','d-sexe','d-esms','d-origine'].forEach(id=>setV(id,''));
+  ['d-nom','d-prenom','d-identifiant','d-territoire','d-secteur',
+   'd-annee','d-ecole','d-college','d-circo','d-nivens'].forEach(id=>setV(id,''));
+  ['d-ddn','d-saisine','d-commission','d-famille'].forEach(id=>setV(id,''));
+}
+
+function remplirFormDossier(d){
+  setV('d-qui', d.Qui_remplit?String(d.Qui_remplit):'');
+  onDosQuiChange();
+  if(!v('d-territoire').value) setV('d-territoire', d.Territoire_PAS);
+  if(!v('d-secteur').value)    setV('d-secteur',    d.Secteur_PAS);
+  setV('d-annee',   d.Annee_scolaire);
+  setV('d-nom',     d.Nom_initial);
+  setV('d-prenom',  d.Prenom_initial);
+  setV('d-sexe',    d.Sexe);
+  setV('d-ddn',     ts2date(d.Date_naissance));
+  majId();
+  setV('d-rne',     d.RNE    ? String(d.RNE)    : '');
+  setV('d-niveau',  d.Niveau ? String(d.Niveau) : '');
+  onDosRneChange(); onDosNiveauChange();
+  setV('d-esms',    d.Notification_ESMS);
+  setV('d-saisine',    ts2date(d.Date_saisine));
+  setV('d-commission', ts2date(d.Date_commission));
+  setV('d-origine',    d.Origine_saisine ? String(d.Origine_saisine) : '');
+  setV('d-famille',    ts2date(d.Date_contact_famille));
+  setV('d-nb-interv',  d.Nb_interventions||0);
+  setV('d-date1action', d.Date_1ere_action ? ts2date(d.Date_1ere_action) : '—');
+  setV('d-cloture',    d.Cloture_exist ? 'Oui' : 'Non');
+}
+
+function onDosQuiChange(){
+  const id=parseInt(v('d-qui').value);
+  const p=intervenants.find(x=>x.id===id);
+  setV('d-territoire', p?p.territoire:'');
+  setV('d-secteur',    p?p.secteur:'');
+}
+function onDosRneChange(){
+  const id=parseInt(v('d-rne').value);
+  const e=etabs.find(x=>x.id===id);
+  if(!e){ setV('d-ecole',''); setV('d-college',''); setV('d-circo',''); return; }
+  const is2d=e.circo==='2nd DEGRE';
+  setV('d-ecole',   is2d?'':e.nom);
+  setV('d-college', is2d?e.nom:'');
+  setV('d-circo',   e.circo);
+}
+function onDosNiveauChange(){
+  const id=parseInt(v('d-niveau').value);
+  const n=niveaux.find(x=>x.id===id);
+  setV('d-nivens', n?n.niv_ens:'');
+}
+function majId(){
+  const nom=v('d-nom').value.trim();
+  const pre=v('d-prenom').value.trim();
+  const ddn=v('d-ddn').value;
+  setV('d-identifiant', `${nom||'_'}_${pre||'_'}_${ddn||''}`);
+}
+
+async function sauvegarderDossier(){
+  const quiId=parseInt(v('d-qui').value);
+  if(!quiId)            { afficherMsg('dos-msg','err','⚠ Choisir "Qui remplit ?"'); return; }
+  if(!v('d-nom').value) { afficherMsg('dos-msg','err','⚠ 1ère lettre du nom requise'); return; }
+  if(!v('d-prenom').value){ afficherMsg('dos-msg','err','⚠ 1ère lettre du prénom requise'); return; }
+  if(!v('d-ddn').value) { afficherMsg('dos-msg','err','⚠ Date de naissance requise'); return; }
+
+  const champs={
+    Qui_remplit:          quiId,
+    Nom_initial:          v('d-nom').value.trim().toUpperCase(),
+    Prenom_initial:       v('d-prenom').value.trim().toUpperCase(),
+    Sexe:                 v('d-sexe').value,
+    Date_naissance:       date2ts(v('d-ddn').value),
+    RNE:                  parseInt(v('d-rne').value)||null,
+    Niveau:               parseInt(v('d-niveau').value)||null,
+    Notification_ESMS:    v('d-esms').value,
+    Date_saisine:         date2ts(v('d-saisine').value),
+    Date_commission:      date2ts(v('d-commission').value),
+    Origine_saisine:      parseInt(v('d-origine').value)||null,
+    Date_contact_famille: date2ts(v('d-famille').value),
+  };
+  try {
+    if(dosIsNew){
+      await grist.docApi.applyUserActions([['AddRecord','T_dossiers',null,champs]]);
+      afficherMsg('dos-msg','ok','✅ Dossier créé');
+    } else {
+      await grist.docApi.applyUserActions([['UpdateRecord','T_dossiers',dossierId,champs]]);
+      afficherMsg('dos-msg','ok','✅ Mis à jour');
+    }
+    const data=await grist.docApi.fetchTable('T_dossiers');
+    dossiers=parseDossiers(data);
+    filtrerDossiers();
+    if(dosIsNew){
+      dossierId=dossiers[dossiers.length-1]?.id||null;
+      dosIsNew=false;
+      if(dossierId){ ouvrirDossier(dossierId); }
+    } else { rendreListe(); }
+  } catch(e){ afficherMsg('dos-msg','err','❌ '+(e.message||e)); }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// INTERVENTIONS — LISTE
+// ═══════════════════════════════════════════════════════════════
+function rendreListeInterv(){
+  const cont=v('interv-liste');
+  v('interv-compteur').textContent=`${interventions.length} intervention(s)`;
+  if(!interventions.length){
+    cont.innerHTML='<div style="padding:16px;text-align:center;color:var(--gris);font-size:12px;">Aucune intervention</div>';
+    return;
+  }
+  cont.innerHTML='';
+  interventions.forEach(it=>{
+    const div=document.createElement('div');
+    div.className='item'+(it.id===intervId?' actif':'');
+    div.onclick=()=>ouvrirIntervention(it.id);
+    const type=it.type_intervention||'?';
+    const badgeClass={'Coordo':'badge-coordo','Ressource EN':'badge-ressen',
+      'Educ PAS':'badge-educ','EMAPAS':'badge-emapas'}[type]||'';
+    const date=it.date?new Date(it.date*1000).toLocaleDateString('fr-FR'):'—';
+    div.innerHTML=`
+      <div class="item-titre">${date}</div>
+      <div class="item-meta">
+        <span class="badge ${badgeClass}">${type}</span>
+        ${it.duree_minutes?`<span>${it.duree_minutes} min</span>`:''}
+        ${it.commentaire?`<span style="font-style:italic;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${it.commentaire}</span>`:''}
+      </div>`;
+    cont.appendChild(div);
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// INTERVENTIONS — FORMULAIRE
+// ═══════════════════════════════════════════════════════════════
+function ouvrirIntervention(id){
+  intervId=id; intervIsNew=false;
+  const it=interventions.find(x=>x.id===id);
+  remplirFormInterv(it);
+  afficherFormInterv(false);
+  rendreListeInterv();
+}
+
+function nouvelleIntervention(){
+  intervId=null; intervIsNew=true;
+  viderFormInterv();
+  setV('i-date', new Date().toISOString().split('T')[0]);
+  afficherFormInterv(true);
+  rendreListeInterv();
+}
+
+function afficherFormInterv(nouveau){
+  v('interv-vide').style.display='none';
+  v('interv-form').style.display='block';
+  v('interv-actions').style.display='flex';
+  v('interv-btn-suppr').style.display=nouveau?'none':'';
+  masquerMsg('interv-msg');
+}
+
+function cacherFormInterv(){
+  intervId=null; intervIsNew=false;
+  v('interv-vide').style.display='flex';
+  v('interv-form').style.display='none';
+  v('interv-actions').style.display='none';
+  rendreListeInterv();
+}
+
+function annulerIntervention(){ cacherFormInterv(); }
+
+function viderFormInterv(){
+  ['i-date','i-duree','i-intervenant','i-type',
+   'i-ressource-en','i-emapas','i-comm-mat','i-commentaire'].forEach(id=>setV(id,''));
+  ['i-hors','i-aesh','i-obs','i-equi','i-elev','i-fam','i-mpa','i-petit'].forEach(id=>{
+    const el=v(id); if(el){el.checked=false;}
+  });
+  ['tgl-hors','tgl-aesh','tgl-obs','tgl-equi','tgl-elev','tgl-fam','tgl-mpa','tgl-petit']
+    .forEach(id=>{ const el=v(id); if(el) el.classList.remove('on'); });
+  v('i-ressources').selectedIndex=-1;
+  rendreCHips();
+  masquerAlerte();
+  onIntervTypeChange();
+}
+
+function remplirFormInterv(it){
+  setV('i-date', ts2date(it.date));
+  setV('i-intervenant', it.intervenant ? String(it.intervenant) : '');
+  setV('i-type',        it.type_intervention||'');
+  setV('i-duree',       it.duree_minutes||'');
+  setV('i-ressource-en',it.intervenant_ressource_en||'');
+  setV('i-emapas',      it.intervenant_EMAPAS||'');
+
+  const bools={
+    'i-hors': ['hors_secteur','tgl-hors'],
+    'i-aesh': ['regulation_aesh','tgl-aesh'],
+    'i-obs':  ['observation_classe','tgl-obs'],
+    'i-equi': ['action_equipe','tgl-equi'],
+    'i-elev': ['directe_eleve','tgl-elev'],
+    'i-fam':  ['interv_famille','tgl-fam'],
+    'i-mpa':  ['MPA','tgl-mpa'],
+    'i-petit':['petit_materiel','tgl-petit'],
+  };
+  Object.entries(bools).forEach(([fid,[key,lblId]])=>{
+    const val=!!it[key];
+    const el=v(fid); if(el) el.checked=val;
+    const lbl=v(lblId); if(lbl) lbl.classList.toggle('on',val);
+  });
+
+  // Ressources
+  let ress=it.autres_ressources_sollicitees||[];
+  if(typeof ress==='string'){ try{ress=JSON.parse(ress);}catch{ress=[];} }
+  if(Array.isArray(ress) && ress[0]==='L') ress=ress.slice(1); // format Grist ChoiceList
+  const sel=v('i-ressources');
+  Array.from(sel.options).forEach(o=>{ o.selected=ress.includes(o.value); });
+  rendreCHips();
+
+  setV('i-comm-mat',    it.commentaire_materiel||'');
+  setV('i-commentaire', it.commentaire||'');
+  onIntervTypeChange();
+  verifierCoherence();
+}
+
+function onIntervTypeChange(){
+  const type=v('i-type').value;
+  v('i-cond-ressource').style.display = type==='Ressource EN' ? 'block' : 'none';
+  v('i-cond-emapas').style.display    = type==='EMAPAS'       ? 'block' : 'none';
+  verifierCoherence();
+}
+
+function tglStyle(cb, lblId){
+  v(lblId).classList.toggle('on', cb.checked);
+}
+
+function rendreCHips(){
+  const sel=v('i-ressources');
+  const vals=Array.from(sel.selectedOptions).map(o=>o.value);
+  const cont=v('i-chips');
+  cont.innerHTML='';
+  vals.forEach(val=>{
+    const chip=document.createElement('span');
+    chip.style.cssText='display:inline-flex;align-items:center;gap:3px;background:var(--bleu-cl);color:var(--bleu);padding:2px 8px;border-radius:9px;font-size:11px;font-weight:600;';
+    chip.innerHTML=`${val}`;
+    cont.appendChild(chip);
+  });
+}
+
+function verifierCoherence(){
+  const type=v('i-type').value;
+  const ren=v('i-ressource-en').value;
+  const emp=v('i-emapas').value;
+  let msg='';
+  if(type==='Ressource EN'&&!ren) msg="⚠ Préciser l'intervenant Ressource EN";
+  else if(type==='EMAPAS'&&!emp) msg="⚠ Préciser l'intervenant EMAPAS";
+  const al=v('i-alerte');
+  if(msg){ al.textContent=msg; al.style.display='block'; }
+  else    { al.style.display='none'; }
+}
+
+function masquerAlerte(){ const el=v('i-alerte'); if(el) el.style.display='none'; }
+
+async function sauvegarderIntervention(){
+  if(!v('i-date').value){ afficherMsg('interv-msg','err','⚠ La date est obligatoire'); return; }
+  if(!dossierId){ afficherMsg('interv-msg','err','⚠ Aucun dossier sélectionné'); return; }
+
+  const sel=v('i-ressources');
+  const ress=Array.from(sel.selectedOptions).map(o=>o.value);
+
+  const champs={
+    dossier:                     dossierId,
+    date:                        date2ts(v('i-date').value),
+    intervenant:                 parseInt(v('i-intervenant').value)||null,
+    type_intervention:           v('i-type').value,
+    intervenant_ressource_en:    v('i-ressource-en').value,
+    intervenant_EMAPAS:          v('i-emapas').value,
+    duree_minutes:               v('i-duree').value,
+    hors_secteur:                v('i-hors').checked,
+    regulation_aesh:             v('i-aesh').checked,
+    observation_classe:          v('i-obs').checked,
+    action_equipe:               v('i-equi').checked,
+    directe_eleve:               v('i-elev').checked,
+    interv_famille:              v('i-fam').checked,
+    autres_ressources_sollicitees: ['L',...ress],
+    MPA:                         v('i-mpa').checked,
+    petit_materiel:              v('i-petit').checked,
+    commentaire_materiel:        v('i-comm-mat').value,
+    commentaire:                 v('i-commentaire').value,
+  };
+  try {
+    if(intervIsNew){
+      await grist.docApi.applyUserActions([['AddRecord','T_interventions',null,champs]]);
+      afficherMsg('interv-msg','ok','✅ Intervention créée');
+    } else {
+      await grist.docApi.applyUserActions([['UpdateRecord','T_interventions',intervId,champs]]);
+      afficherMsg('interv-msg','ok','✅ Mise à jour');
+    }
+    const data=await grist.docApi.fetchTable('T_interventions');
+    interventions=parseInterventions(data, dossierId);
+    // Rafraîchir aussi nb_interventions dans la liste dossiers
+    const ddata=await grist.docApi.fetchTable('T_dossiers');
+    dossiers=parseDossiers(ddata);
+    rendreListeInterv();
+    if(intervIsNew){
+      intervId=interventions[0]?.id||null;
+      intervIsNew=false;
+      if(intervId) ouvrirIntervention(intervId);
+    }
+  } catch(e){ afficherMsg('interv-msg','err','❌ '+(e.message||e)); }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SUPPRESSION
+// ═══════════════════════════════════════════════════════════════
+function demanderSuppr(cible){
+  supprCible=cible;
+  if(cible==='dossier'){
+    const d=dossiers.find(x=>x.id===dossierId);
+    v('modale-titre').textContent='Supprimer ce dossier ?';
+    v('modale-texte').textContent=
+      `Supprimer "${d?.Identifiant_eleve||''}" ? `+
+      `Ses ${d?.Nb_interventions||0} intervention(s) seront aussi supprimées. Irréversible.`;
+  } else {
+    v('modale-titre').textContent='Supprimer cette intervention ?';
+    v('modale-texte').textContent='Cette action est irréversible.';
+  }
+  v('overlay').classList.add('v');
+}
+
+function fermerModale(){ v('overlay').classList.remove('v'); }
+
+async function confirmerSuppr(){
+  fermerModale();
+  try {
+    if(supprCible==='dossier'){
+      // Supprimer les interventions liées d'abord
+      if(interventions.length){
+        await grist.docApi.applyUserActions(
+          interventions.map(it=>['RemoveRecord','T_interventions',it.id])
+        );
+      }
+      await grist.docApi.applyUserActions([['RemoveRecord','T_dossiers',dossierId]]);
+      cacherFormDossier();
+      const data=await grist.docApi.fetchTable('T_dossiers');
+      dossiers=parseDossiers(data);
+      filtrerDossiers();
+      v('onglet-interv').style.display='none';
+    } else {
+      await grist.docApi.applyUserActions([['RemoveRecord','T_interventions',intervId]]);
+      cacherFormInterv();
+      const data=await grist.docApi.fetchTable('T_interventions');
+      interventions=parseInterventions(data, dossierId);
+      rendreListeInterv();
+    }
+  } catch(e){ setStatut('err','❌ Erreur suppression : '+(e.message||e)); }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MESSAGES
+// ═══════════════════════════════════════════════════════════════
+function afficherMsg(id, type, msg){
+  const el=v(id); el.textContent=msg; el.className='msg-action '+type;
+  setTimeout(()=>masquerMsg(id), 4000);
+}
+function masquerMsg(id){ const el=v(id); if(el){el.className='msg-action';el.textContent='';} }
+</script>
+</body>
+</html>

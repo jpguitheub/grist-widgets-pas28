@@ -565,14 +565,35 @@ function initGrist() {
   });
 
   // Charger la liste T_pas pour le select Intervenant
-  grist.docApi.fetchTable('T_pas').then(data => {
-    intervenants = data.id.map((id, i) => ({
-      id,
-      nom:  data.pas_coordo[i] || '',
-      type: data.pas_type[i]   || ''
-    })).sort((a,b) => a.nom.localeCompare(b.nom));
+  chargerIntervenants();
+}
+
+async function chargerIntervenants() {
+  try {
+    const data = await grist.docApi.fetchTable('T_pas');
+    // Défense : chercher les colonnes dynamiquement au cas où le nom diffère
+    const cols  = Object.keys(data);
+    const colNom  = cols.find(c => c.toLowerCase().includes('coordo')) || 'pas_coordo';
+    const colType = cols.find(c => c.toLowerCase().includes('type'))   || 'pas_type';
+
+    intervenants = data.id
+      .map((id, i) => ({
+        id,
+        nom:  (data[colNom]  ? data[colNom][i]  : '') || '',
+        type: (data[colType] ? data[colType][i] : '') || ''
+      }))
+      .filter(p => p.nom)
+      .sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
+
+    if (intervenants.length === 0) {
+      console.warn('[PAS] T_pas vide ou colonnes introuvables. Colonnes dispo :', cols);
+    }
     remplirSelectIntervenant();
-  }).catch(() => {});
+  } catch(e) {
+    console.error('[PAS] Erreur fetchTable T_pas :', e);
+    const sel = document.getElementById('f-intervenant');
+    sel.innerHTML = '<option value="">⚠ Erreur chargement intervenants</option>';
+  }
 }
 
 function remplirSelectIntervenant() {
@@ -597,7 +618,7 @@ async function chargerInterventions() {
         id,
         dossier:                    data.dossier[i],
         date:                       data.date[i],
-        intervenant:                data.intervenant[i],
+        intervenant:                data.intervenant[i] || null,  // 0 = null en Ref Grist
         type_intervention:          data.type_intervention[i],
         intervenant_ressource_en:   data.intervenant_ressource_en[i],
         intervenant_EMAPAS:         data.intervenant_EMAPAS[i],
@@ -743,7 +764,9 @@ function remplirFormulaire(interv) {
   } else {
     document.getElementById('f-date').value = '';
   }
-  document.getElementById('f-intervenant').value = interv.intervenant || '';
+  // intervenant est un ID numérique (Ref) — convertir en string pour le select
+  const intervId = interv.intervenant ? String(interv.intervenant) : '';
+  document.getElementById('f-intervenant').value = intervId;
   document.getElementById('f-type').value         = interv.type_intervention || '';
   document.getElementById('f-duree').value        = interv.duree_minutes || '';
   document.getElementById('f-ressource-en').value = interv.intervenant_ressource_en || '';

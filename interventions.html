@@ -1,1 +1,959 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Saisie intervention PAS</title>
+<style>
+  /* ── Variables ── */
+  :root {
+    --bleu:    #2563eb;
+    --bleu-cl: #dbeafe;
+    --vert:    #16a34a;
+    --vert-cl: #dcfce7;
+    --rouge:   #dc2626;
+    --rouge-cl:#fee2e2;
+    --gris:    #6b7280;
+    --gris-cl: #f3f4f6;
+    --bord:    #e5e7eb;
+    --texte:   #111827;
+    --rayon:   6px;
+  }
 
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: system-ui, -apple-system, sans-serif;
+    font-size: 13px;
+    color: var(--texte);
+    background: #f9fafb;
+    padding: 0;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── Bandeau élève (contextuel) ── */
+  #bandeau {
+    background: var(--bleu);
+    color: white;
+    padding: 8px 14px;
+    font-size: 12px;
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    flex-shrink: 0;
+  }
+  #bandeau strong { font-size: 14px; }
+  #bandeau span { opacity: .85; }
+
+  /* ── Panneau principal ── */
+  #main {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* ── Liste des interventions (gauche) ── */
+  #liste {
+    width: 280px;
+    min-width: 220px;
+    border-right: 1px solid var(--bord);
+    display: flex;
+    flex-direction: column;
+    background: white;
+    flex-shrink: 0;
+  }
+
+  #liste-header {
+    padding: 10px 12px;
+    background: var(--gris-cl);
+    border-bottom: 1px solid var(--bord);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-weight: 600;
+    font-size: 12px;
+    color: var(--gris);
+    text-transform: uppercase;
+    letter-spacing: .04em;
+  }
+
+  #btn-new {
+    background: var(--bleu);
+    color: white;
+    border: none;
+    border-radius: var(--rayon);
+    padding: 4px 10px;
+    font-size: 12px;
+    cursor: pointer;
+    font-weight: 600;
+  }
+  #btn-new:hover { background: #1d4ed8; }
+
+  #liste-items {
+    flex: 1;
+    overflow-y: auto;
+  }
+
+  .item {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--bord);
+    cursor: pointer;
+    transition: background .1s;
+  }
+  .item:hover { background: var(--gris-cl); }
+  .item.actif { background: var(--bleu-cl); border-left: 3px solid var(--bleu); }
+
+  .item-date { font-weight: 600; font-size: 12px; }
+  .item-type { font-size: 11px; color: var(--gris); margin-top: 2px; }
+  .item-badge {
+    display: inline-block;
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 9px;
+    margin-top: 3px;
+    font-weight: 500;
+  }
+  .badge-coordo    { background: #dbeafe; color: #1d4ed8; }
+  .badge-ressource { background: #fef9c3; color: #854d0e; }
+  .badge-educ      { background: #dcfce7; color: #15803d; }
+  .badge-emapas    { background: #fae8ff; color: #7e22ce; }
+
+  /* ── Formulaire (droite) ── */
+  #formulaire {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    background: #f9fafb;
+  }
+
+  #vide {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: var(--gris);
+    text-align: center;
+    gap: 8px;
+  }
+  #vide svg { opacity: .3; }
+  #vide p { font-size: 13px; }
+
+  /* ── Blocs de saisie ── */
+  .bloc {
+    background: white;
+    border: 1px solid var(--bord);
+    border-radius: var(--rayon);
+    margin-bottom: 12px;
+    overflow: hidden;
+  }
+
+  .bloc-titre {
+    padding: 8px 14px;
+    font-weight: 700;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    color: white;
+    background: var(--bleu);
+  }
+  .bloc-titre.vert   { background: #15803d; }
+  .bloc-titre.violet { background: #7c3aed; }
+  .bloc-titre.orange { background: #ea580c; }
+  .bloc-titre.gris   { background: #4b5563; }
+
+  .bloc-corps { padding: 12px 14px; }
+
+  /* ── Champs ── */
+  .champ { margin-bottom: 10px; }
+  .champ:last-child { margin-bottom: 0; }
+
+  label {
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--gris);
+    margin-bottom: 3px;
+    text-transform: uppercase;
+    letter-spacing: .03em;
+  }
+
+  input[type=date],
+  select,
+  textarea {
+    width: 100%;
+    border: 1px solid var(--bord);
+    border-radius: var(--rayon);
+    padding: 6px 9px;
+    font-size: 13px;
+    font-family: inherit;
+    color: var(--texte);
+    background: white;
+    transition: border-color .15s;
+  }
+  input[type=date]:focus,
+  select:focus,
+  textarea:focus {
+    outline: none;
+    border-color: var(--bleu);
+    box-shadow: 0 0 0 2px var(--bleu-cl);
+  }
+
+  textarea { resize: vertical; min-height: 60px; }
+
+  /* ── Grille 2 colonnes ── */
+  .grille2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+  /* ── Cases à cocher — style toggle ── */
+  .toggles {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .toggle-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+    padding: 5px 10px;
+    border: 1px solid var(--bord);
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--gris);
+    background: white;
+    transition: all .15s;
+    user-select: none;
+  }
+  .toggle-label input { display: none; }
+  .toggle-label:hover { border-color: var(--bleu); color: var(--bleu); }
+  .toggle-label.on {
+    background: var(--vert-cl);
+    border-color: var(--vert);
+    color: var(--vert);
+  }
+
+  /* ── Alerte cohérence ── */
+  #alerte {
+    display: none;
+    padding: 8px 12px;
+    background: var(--rouge-cl);
+    border: 1px solid #fca5a5;
+    border-radius: var(--rayon);
+    color: var(--rouge);
+    font-size: 12px;
+    font-weight: 600;
+    margin-bottom: 12px;
+  }
+
+  /* ── Boutons action ── */
+  #actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 4px;
+    padding: 12px 16px;
+    background: white;
+    border-top: 1px solid var(--bord);
+    flex-shrink: 0;
+  }
+
+  .btn {
+    padding: 7px 18px;
+    border-radius: var(--rayon);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+    transition: background .15s;
+  }
+  .btn-primaire  { background: var(--bleu); color: white; }
+  .btn-primaire:hover  { background: #1d4ed8; }
+  .btn-danger    { background: var(--rouge); color: white; }
+  .btn-danger:hover    { background: #b91c1c; }
+  .btn-annuler   { background: var(--gris-cl); color: var(--texte); }
+  .btn-annuler:hover   { background: #e5e7eb; }
+
+  #msg-statut {
+    font-size: 12px;
+    padding: 7px 12px;
+    border-radius: var(--rayon);
+    display: none;
+    align-items: center;
+    gap: 6px;
+  }
+  #msg-statut.ok    { display:flex; background: var(--vert-cl);  color: var(--vert);  }
+  #msg-statut.err   { display:flex; background: var(--rouge-cl); color: var(--rouge); }
+
+  /* ── Champ conditionnel ── */
+  .conditionnel { display: none; }
+  .conditionnel.visible { display: block; }
+
+  /* ── Select multiple (ChoiceList) ── */
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    border: 1px solid var(--bord);
+    border-radius: var(--rayon);
+    padding: 6px;
+    min-height: 38px;
+    background: white;
+    cursor: pointer;
+  }
+  .chips:focus-within { border-color: var(--bleu); box-shadow: 0 0 0 2px var(--bleu-cl); }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: var(--bleu-cl);
+    color: var(--bleu);
+    padding: 2px 8px;
+    border-radius: 9px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .chip-x { cursor: pointer; font-size: 13px; line-height: 1; }
+  .chip-x:hover { color: var(--rouge); }
+</style>
+</head>
+<body>
+
+<!-- Bandeau contextuel élève -->
+<div id="bandeau">
+  <strong id="b-identifiant">—</strong>
+  <span id="b-secteur"></span>
+  <span id="b-rne"></span>
+  <span id="b-nb" style="margin-left:auto;background:rgba(255,255,255,.2);padding:2px 8px;border-radius:9px;font-weight:700;"></span>
+</div>
+
+<!-- Corps principal -->
+<div id="main">
+
+  <!-- Liste des interventions -->
+  <div id="liste">
+    <div id="liste-header">
+      <span>Interventions</span>
+      <button id="btn-new" onclick="nouvelleIntervention()">+ Nouvelle</button>
+    </div>
+    <div id="liste-items">
+      <div id="liste-vide" style="padding:20px;text-align:center;color:var(--gris);font-size:12px;">
+        Sélectionner un élève dans Grist
+      </div>
+    </div>
+  </div>
+
+  <!-- Zone formulaire -->
+  <div style="flex:1;display:flex;flex-direction:column;overflow:hidden;">
+    <div id="formulaire">
+
+      <!-- État vide -->
+      <div id="vide">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+        </svg>
+        <p>Cliquer sur <strong>+ Nouvelle</strong><br>ou sélectionner une intervention dans la liste</p>
+      </div>
+
+      <!-- Formulaire de saisie (masqué par défaut) -->
+      <div id="form-contenu" style="display:none;">
+
+        <!-- Alerte cohérence -->
+        <div id="alerte"></div>
+
+        <!-- Bloc 1 — Identification -->
+        <div class="bloc">
+          <div class="bloc-titre">1 — Identification</div>
+          <div class="bloc-corps">
+            <div class="grille2">
+              <div class="champ">
+                <label>Date *</label>
+                <input type="date" id="f-date">
+              </div>
+              <div class="champ">
+                <label>Durée (minutes)</label>
+                <select id="f-duree">
+                  <option value="">— choisir —</option>
+                  <option>15</option><option>30</option><option>45</option>
+                  <option>60</option><option>75</option><option>90</option>
+                  <option>105</option><option>120</option><option>135</option>
+                  <option>150</option><option>165</option><option>180</option>
+                  <option>195</option><option>210</option><option>225</option>
+                  <option>240</option>
+                </select>
+              </div>
+            </div>
+            <div class="champ">
+              <label>Intervenant</label>
+              <select id="f-intervenant">
+                <option value="">— choisir —</option>
+              </select>
+            </div>
+            <div class="champ">
+              <label>Type d'intervenant *</label>
+              <select id="f-type" onchange="onTypeChange()">
+                <option value="">— choisir —</option>
+                <option>Coordo</option>
+                <option>Ressource EN</option>
+                <option>Educ PAS</option>
+                <option>EMAPAS</option>
+              </select>
+            </div>
+            <!-- Champ conditionnel Ressource EN -->
+            <div class="champ conditionnel" id="cond-ressource">
+              <label>Intervenant Ressource EN *</label>
+              <select id="f-ressource-en">
+                <option value="">— préciser —</option>
+                <option>AED</option><option>AESH référent</option>
+                <option>Assistante sociale</option><option>Autre</option>
+                <option>Coordo ULIS</option><option>CPC</option>
+                <option>Dispositif relais</option><option>Enseignant référent</option>
+                <option>Enseignant spécialisé</option><option>ERUN</option>
+                <option>Infirmière</option><option>PRTND</option>
+                <option>Psy EN</option><option>RASED</option>
+              </select>
+            </div>
+            <!-- Champ conditionnel EMAPAS -->
+            <div class="champ conditionnel" id="cond-emapas">
+              <label>Intervenant EMAPAS *</label>
+              <select id="f-emapas">
+                <option value="">— préciser —</option>
+                <option>Ergo</option><option>Neuropsy</option>
+                <option>Educ comportement défi</option>
+                <option>Psychomot</option><option>Psy</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bloc 2 — Nature de l'intervention -->
+        <div class="bloc">
+          <div class="bloc-titre vert">2 — Nature de l'intervention</div>
+          <div class="bloc-corps">
+            <div class="toggles">
+              <label class="toggle-label" id="tgl-hors">
+                <input type="checkbox" id="f-hors" onchange="toggleStyle(this,'tgl-hors')">
+                Hors secteur
+              </label>
+              <label class="toggle-label" id="tgl-aesh">
+                <input type="checkbox" id="f-aesh" onchange="toggleStyle(this,'tgl-aesh')">
+                Régulation AESH
+              </label>
+              <label class="toggle-label" id="tgl-obs">
+                <input type="checkbox" id="f-obs" onchange="toggleStyle(this,'tgl-obs')">
+                Observation classe
+              </label>
+              <label class="toggle-label" id="tgl-equipe">
+                <input type="checkbox" id="f-equipe" onchange="toggleStyle(this,'tgl-equipe')">
+                Action équipe péda
+              </label>
+              <label class="toggle-label" id="tgl-eleve">
+                <input type="checkbox" id="f-eleve" onchange="toggleStyle(this,'tgl-eleve')">
+                Action directe élève
+              </label>
+              <label class="toggle-label" id="tgl-famille">
+                <input type="checkbox" id="f-famille" onchange="toggleStyle(this,'tgl-famille')">
+                Intervention famille
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bloc 3 — Ressources et matériel -->
+        <div class="bloc">
+          <div class="bloc-titre orange">3 — Ressources et matériel</div>
+          <div class="bloc-corps">
+            <div class="champ">
+              <label>Autres ressources sollicitées</label>
+              <div class="chips" id="chips-ressources" onclick="ouvrirSelectRessources()"></div>
+              <select id="f-ressources-select" multiple style="display:none"
+                      onchange="onRessourcesChange()">
+                <option>Autre</option><option>CAMSP</option><option>CDLA</option>
+                <option>CRIP</option><option>Libéral</option><option>SPIJ</option>
+                <option>CMPP</option><option>AS de secteur</option>
+                <option>PMI</option><option>PCO</option>
+              </select>
+            </div>
+            <div class="grille2">
+              <label class="toggle-label" id="tgl-mpa" style="justify-content:flex-start;">
+                <input type="checkbox" id="f-mpa" onchange="toggleStyle(this,'tgl-mpa')">
+                Matériel MPA prêté
+              </label>
+              <label class="toggle-label" id="tgl-petit" style="justify-content:flex-start;">
+                <input type="checkbox" id="f-petit" onchange="toggleStyle(this,'tgl-petit')">
+                Petit matériel prêté
+              </label>
+            </div>
+            <div class="champ" style="margin-top:10px;">
+              <label>Commentaire matériel</label>
+              <textarea id="f-comm-materiel" rows="2" placeholder="Précisions sur le matériel prêté…"></textarea>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bloc 4 — Commentaire -->
+        <div class="bloc">
+          <div class="bloc-titre gris">4 — Commentaire libre</div>
+          <div class="bloc-corps">
+            <div class="champ">
+              <textarea id="f-commentaire" rows="3" placeholder="Observations, suite à donner…"></textarea>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /form-contenu -->
+    </div><!-- /formulaire -->
+
+    <!-- Barre d'actions -->
+    <div id="actions" style="display:none;">
+      <button class="btn btn-primaire" onclick="sauvegarder()">💾 Enregistrer</button>
+      <button class="btn btn-annuler"  onclick="annuler()">Annuler</button>
+      <button class="btn btn-danger"   id="btn-suppr" onclick="supprimer()" style="margin-left:auto;">🗑 Supprimer</button>
+      <div id="msg-statut"></div>
+    </div>
+  </div><!-- /flex colonne droite -->
+
+</div><!-- /main -->
+
+<script>
+// ── État global ──────────────────────────────────────────────────────────────
+let grist;
+let dossierId    = null;   // ID Grist de l'élève sélectionné
+let interventions = [];    // Liste des interventions de l'élève
+let currentId    = null;   // ID de l'intervention en cours d'édition (null = nouvelle)
+let intervenants  = [];    // Liste T_pas
+let isNew        = false;
+
+// ── Init Grist ───────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  if (typeof grist === 'undefined' && window.grist) {
+    initGrist();
+  } else {
+    // Attendre que l'API Grist soit disponible
+    window.addEventListener('message', function onMsg(e) {
+      if (e.data && e.data.type === 'grist-ready') {
+        window.removeEventListener('message', onMsg);
+        initGrist();
+      }
+    });
+    // Fallback : polling
+    const t = setInterval(() => {
+      if (window.grist) { clearInterval(t); initGrist(); }
+    }, 200);
+  }
+});
+
+function initGrist() {
+  grist = window.grist;
+  grist.ready({ requiredAccess: 'full' });
+
+  // Réception de l'enregistrement sélectionné (T_dossiers)
+  grist.onRecord(record => {
+    if (!record) return;
+    dossierId = record.id;
+    // Mettre à jour le bandeau
+    document.getElementById('b-identifiant').textContent =
+      record.Identifiant_eleve || '—';
+    document.getElementById('b-secteur').textContent =
+      record.Secteur_PAS || '';
+    document.getElementById('b-rne').textContent =
+      (record.RNE && record.RNE.etab_nom) ? record.RNE.etab_nom : '';
+    // Charger les interventions
+    chargerInterventions();
+  });
+
+  // Charger la liste T_pas pour le select Intervenant
+  grist.docApi.fetchTable('T_pas').then(data => {
+    intervenants = data.id.map((id, i) => ({
+      id,
+      nom:  data.pas_coordo[i] || '',
+      type: data.pas_type[i]   || ''
+    })).sort((a,b) => a.nom.localeCompare(b.nom));
+    remplirSelectIntervenant();
+  }).catch(() => {});
+}
+
+function remplirSelectIntervenant() {
+  const sel = document.getElementById('f-intervenant');
+  sel.innerHTML = '<option value="">— choisir —</option>';
+  intervenants.forEach(p => {
+    const opt = document.createElement('option');
+    opt.value = p.id;
+    opt.textContent = `${p.nom} (${p.type})`;
+    sel.appendChild(opt);
+  });
+}
+
+// ── Chargement des interventions ─────────────────────────────────────────────
+async function chargerInterventions() {
+  if (!dossierId) return;
+  try {
+    const data = await grist.docApi.fetchTable('T_interventions');
+    // Filtrer par dossier
+    interventions = data.id
+      .map((id, i) => ({
+        id,
+        dossier:                    data.dossier[i],
+        date:                       data.date[i],
+        intervenant:                data.intervenant[i],
+        type_intervention:          data.type_intervention[i],
+        intervenant_ressource_en:   data.intervenant_ressource_en[i],
+        intervenant_EMAPAS:         data.intervenant_EMAPAS[i],
+        duree_minutes:              data.duree_minutes[i],
+        hors_secteur:               data.hors_secteur[i],
+        regulation_aesh:            data.regulation_aesh[i],
+        observation_classe:         data.observation_classe[i],
+        action_equipe:              data.action_equipe[i],
+        directe_eleve:              data.directe_eleve[i],
+        interv_famille:             data.interv_famille[i],
+        autres_ressources_sollicitees: data.autres_ressources_sollicitees?.[i] || [],
+        MPA:                        data.MPA[i],
+        petit_materiel:             data.petit_materiel[i],
+        commentaire_materiel:       data.commentaire_materiel[i],
+        commentaire:                data.commentaire[i],
+      }))
+      .filter(r => r.dossier === dossierId)
+      .sort((a, b) => (b.date || 0) - (a.date || 0)); // plus récent en haut
+
+    rendreListe();
+    document.getElementById('b-nb').textContent =
+      `${interventions.length} intervention${interventions.length !== 1 ? 's' : ''}`;
+    // Cacher le formulaire
+    cacherFormulaire();
+  } catch(e) {
+    console.error('Erreur chargement interventions', e);
+  }
+}
+
+// ── Rendu de la liste ─────────────────────────────────────────────────────────
+function rendreListe() {
+  const cont = document.getElementById('liste-items');
+  const vide = document.getElementById('liste-vide');
+  if (interventions.length === 0) {
+    cont.innerHTML = '';
+    cont.appendChild(vide);
+    vide.style.display = 'block';
+    vide.textContent = 'Aucune intervention — cliquer sur + Nouvelle';
+    return;
+  }
+  vide.style.display = 'none';
+  cont.innerHTML = '';
+  interventions.forEach(interv => {
+    const div = document.createElement('div');
+    div.className = 'item' + (interv.id === currentId ? ' actif' : '');
+    div.dataset.id = interv.id;
+    div.onclick = () => ouvrirIntervention(interv.id);
+
+    const date = interv.date
+      ? new Date(interv.date * 1000).toLocaleDateString('fr-FR')
+      : '—';
+    const type = interv.type_intervention || '?';
+    const badgeClass = {
+      'Coordo':      'badge-coordo',
+      'Ressource EN':'badge-ressource',
+      'Educ PAS':    'badge-educ',
+      'EMAPAS':      'badge-emapas'
+    }[type] || '';
+
+    div.innerHTML = `
+      <div class="item-date">${date}</div>
+      <div class="item-type">
+        <span class="item-badge ${badgeClass}">${type}</span>
+        ${interv.duree_minutes ? `<span style="font-size:11px;color:var(--gris);"> ${interv.duree_minutes} min</span>` : ''}
+      </div>
+      ${interv.commentaire ? `<div style="font-size:11px;color:var(--gris);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px;">${interv.commentaire}</div>` : ''}
+    `;
+    cont.appendChild(div);
+  });
+}
+
+// ── Ouvrir une intervention existante ────────────────────────────────────────
+function ouvrirIntervention(id) {
+  const interv = interventions.find(i => i.id === id);
+  if (!interv) return;
+  currentId = id;
+  isNew = false;
+  remplirFormulaire(interv);
+  afficherFormulaire();
+  rendreListe(); // mettre à jour la classe .actif
+  document.getElementById('btn-suppr').style.display = '';
+}
+
+// ── Nouvelle intervention ─────────────────────────────────────────────────────
+function nouvelleIntervention() {
+  currentId = null;
+  isNew = true;
+  viderFormulaire();
+  // Date du jour
+  const auj = new Date();
+  document.getElementById('f-date').value =
+    auj.toISOString().split('T')[0];
+  afficherFormulaire();
+  rendreListe();
+  document.getElementById('btn-suppr').style.display = 'none';
+}
+
+// ── Formulaire ────────────────────────────────────────────────────────────────
+function afficherFormulaire() {
+  document.getElementById('vide').style.display = 'none';
+  document.getElementById('form-contenu').style.display = 'block';
+  document.getElementById('actions').style.display = 'flex';
+  masquerStatut();
+}
+
+function cacherFormulaire() {
+  currentId = null;
+  isNew = false;
+  document.getElementById('vide').style.display = 'flex';
+  document.getElementById('form-contenu').style.display = 'none';
+  document.getElementById('actions').style.display = 'none';
+  rendreListe();
+}
+
+function viderFormulaire() {
+  document.getElementById('f-date').value = '';
+  document.getElementById('f-intervenant').value = '';
+  document.getElementById('f-type').value = '';
+  document.getElementById('f-duree').value = '';
+  document.getElementById('f-ressource-en').value = '';
+  document.getElementById('f-emapas').value = '';
+  ['f-hors','f-aesh','f-obs','f-equipe','f-eleve','f-famille','f-mpa','f-petit']
+    .forEach(id => {
+      const el = document.getElementById(id);
+      el.checked = false;
+      const lbl = el.closest('label');
+      if (lbl) lbl.classList.remove('on');
+    });
+  // Chips ressources
+  document.getElementById('f-ressources-select').selectedIndex = -1;
+  rendreCHips([]);
+  document.getElementById('f-comm-materiel').value = '';
+  document.getElementById('f-commentaire').value = '';
+  onTypeChange();
+  masquerAlerte();
+}
+
+function remplirFormulaire(interv) {
+  // Date (timestamp UNIX → yyyy-mm-dd)
+  if (interv.date) {
+    const d = new Date(interv.date * 1000);
+    document.getElementById('f-date').value = d.toISOString().split('T')[0];
+  } else {
+    document.getElementById('f-date').value = '';
+  }
+  document.getElementById('f-intervenant').value = interv.intervenant || '';
+  document.getElementById('f-type').value         = interv.type_intervention || '';
+  document.getElementById('f-duree').value        = interv.duree_minutes || '';
+  document.getElementById('f-ressource-en').value = interv.intervenant_ressource_en || '';
+  document.getElementById('f-emapas').value       = interv.intervenant_EMAPAS || '';
+
+  const bools = {
+    'f-hors':    ['hors_secteur',     'tgl-hors'],
+    'f-aesh':    ['regulation_aesh',  'tgl-aesh'],
+    'f-obs':     ['observation_classe','tgl-obs'],
+    'f-equipe':  ['action_equipe',    'tgl-equipe'],
+    'f-eleve':   ['directe_eleve',    'tgl-eleve'],
+    'f-famille': ['interv_famille',   'tgl-famille'],
+    'f-mpa':     ['MPA',              'tgl-mpa'],
+    'f-petit':   ['petit_materiel',   'tgl-petit'],
+  };
+  Object.entries(bools).forEach(([fid, [key, lblId]]) => {
+    const val = !!interv[key];
+    document.getElementById(fid).checked = val;
+    document.getElementById(lblId).classList.toggle('on', val);
+  });
+
+  // Ressources (ChoiceList = tableau ou chaîne JSON)
+  let ressources = interv.autres_ressources_sollicitees || [];
+  if (typeof ressources === 'string') {
+    try { ressources = JSON.parse(ressources); } catch { ressources = []; }
+  }
+  rendreCHips(ressources);
+  // Synchroniser le select multiple
+  const sel = document.getElementById('f-ressources-select');
+  Array.from(sel.options).forEach(opt => {
+    opt.selected = ressources.includes(opt.value);
+  });
+
+  document.getElementById('f-comm-materiel').value = interv.commentaire_materiel || '';
+  document.getElementById('f-commentaire').value   = interv.commentaire || '';
+
+  onTypeChange();
+  verifierCoherence();
+}
+
+// ── Champs conditionnels ──────────────────────────────────────────────────────
+function onTypeChange() {
+  const type = document.getElementById('f-type').value;
+  document.getElementById('cond-ressource').classList.toggle('visible', type === 'Ressource EN');
+  document.getElementById('cond-emapas').classList.toggle('visible',    type === 'EMAPAS');
+  verifierCoherence();
+}
+
+// ── Toggles ───────────────────────────────────────────────────────────────────
+function toggleStyle(checkbox, lblId) {
+  document.getElementById(lblId).classList.toggle('on', checkbox.checked);
+}
+
+// ── Chips ressources ──────────────────────────────────────────────────────────
+function rendreCHips(vals) {
+  const cont = document.getElementById('chips-ressources');
+  cont.innerHTML = '';
+  if (!vals || vals.length === 0) {
+    cont.innerHTML = '<span style="color:var(--gris);font-size:12px;">Cliquer pour sélectionner…</span>';
+    return;
+  }
+  vals.forEach(v => {
+    const chip = document.createElement('span');
+    chip.className = 'chip';
+    chip.innerHTML = `${v} <span class="chip-x" onclick="retirerRessource(event,'${v}')">×</span>`;
+    cont.appendChild(chip);
+  });
+}
+
+function retirerRessource(e, val) {
+  e.stopPropagation();
+  const sel = document.getElementById('f-ressources-select');
+  Array.from(sel.options).forEach(opt => {
+    if (opt.value === val) opt.selected = false;
+  });
+  onRessourcesChange();
+}
+
+function ouvrirSelectRessources() {
+  const sel = document.getElementById('f-ressources-select');
+  // Afficher temporairement pour permettre la sélection
+  sel.style.display = 'block';
+  sel.size = 6;
+  sel.style.position = 'absolute';
+  sel.style.zIndex = '100';
+  sel.focus();
+  sel.onblur = () => {
+    sel.style.display = 'none';
+    onRessourcesChange();
+  };
+}
+
+function onRessourcesChange() {
+  const sel = document.getElementById('f-ressources-select');
+  const vals = Array.from(sel.selectedOptions).map(o => o.value);
+  rendreCHips(vals);
+}
+
+// ── Vérification cohérence ────────────────────────────────────────────────────
+function verifierCoherence() {
+  const type = document.getElementById('f-type').value;
+  const ressEN = document.getElementById('f-ressource-en').value;
+  const emapas = document.getElementById('f-emapas').value;
+  let msg = '';
+  if (type === 'Ressource EN' && !ressEN)
+    msg = '⚠ Préciser l\'intervenant Ressource EN';
+  else if (type === 'EMAPAS' && !emapas)
+    msg = '⚠ Préciser l\'intervenant EMAPAS';
+  if (msg) afficherAlerte(msg);
+  else masquerAlerte();
+}
+
+function afficherAlerte(msg) {
+  const el = document.getElementById('alerte');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+function masquerAlerte() {
+  document.getElementById('alerte').style.display = 'none';
+}
+
+// ── Sauvegarder ───────────────────────────────────────────────────────────────
+async function sauvegarder() {
+  const dateVal = document.getElementById('f-date').value;
+  if (!dateVal) { afficherAlerte('⚠ La date est obligatoire.'); return; }
+  if (!dossierId) { afficherAlerte('⚠ Aucun élève sélectionné.'); return; }
+
+  // Date → timestamp UNIX (minuit UTC)
+  const ts = Math.floor(new Date(dateVal + 'T00:00:00Z').getTime() / 1000);
+
+  // Ressources sélectionnées
+  const selRess = document.getElementById('f-ressources-select');
+  const ressources = Array.from(selRess.selectedOptions).map(o => o.value);
+
+  const champs = {
+    dossier:                    dossierId,
+    date:                       ts,
+    intervenant:                parseInt(document.getElementById('f-intervenant').value) || null,
+    type_intervention:          document.getElementById('f-type').value,
+    intervenant_ressource_en:   document.getElementById('f-ressource-en').value,
+    intervenant_EMAPAS:         document.getElementById('f-emapas').value,
+    duree_minutes:              document.getElementById('f-duree').value,
+    hors_secteur:               document.getElementById('f-hors').checked,
+    regulation_aesh:            document.getElementById('f-aesh').checked,
+    observation_classe:         document.getElementById('f-obs').checked,
+    action_equipe:              document.getElementById('f-equipe').checked,
+    directe_eleve:              document.getElementById('f-eleve').checked,
+    interv_famille:             document.getElementById('f-famille').checked,
+    autres_ressources_sollicitees: ['L', ...ressources],  // format ChoiceList Grist
+    MPA:                        document.getElementById('f-mpa').checked,
+    petit_materiel:             document.getElementById('f-petit').checked,
+    commentaire_materiel:       document.getElementById('f-comm-materiel').value,
+    commentaire:                document.getElementById('f-commentaire').value,
+  };
+
+  try {
+    if (isNew) {
+      await grist.docApi.applyUserActions([
+        ['AddRecord', 'T_interventions', null, champs]
+      ]);
+    } else {
+      await grist.docApi.applyUserActions([
+        ['UpdateRecord', 'T_interventions', currentId, champs]
+      ]);
+    }
+    afficherStatut('ok', '✅ Enregistré avec succès');
+    await chargerInterventions();
+    // Rester sur l'enregistrement si modification, sinon fermer
+    if (isNew) {
+      // Trouver le dernier enregistrement créé et l'ouvrir
+      await chargerInterventions();
+      if (interventions.length > 0) ouvrirIntervention(interventions[0].id);
+    }
+  } catch(e) {
+    afficherStatut('err', '❌ Erreur : ' + (e.message || 'inconnue'));
+  }
+}
+
+// ── Supprimer ─────────────────────────────────────────────────────────────────
+async function supprimer() {
+  if (!currentId) return;
+  if (!confirm('Supprimer cette intervention ?')) return;
+  try {
+    await grist.docApi.applyUserActions([
+      ['RemoveRecord', 'T_interventions', currentId]
+    ]);
+    cacherFormulaire();
+    await chargerInterventions();
+  } catch(e) {
+    afficherStatut('err', '❌ Erreur suppression : ' + (e.message || ''));
+  }
+}
+
+// ── Annuler ───────────────────────────────────────────────────────────────────
+function annuler() {
+  cacherFormulaire();
+}
+
+// ── Statut ────────────────────────────────────────────────────────────────────
+function afficherStatut(type, msg) {
+  const el = document.getElementById('msg-statut');
+  el.className = 'msg-statut ' + type;
+  el.textContent = msg;
+  setTimeout(() => masquerStatut(), 3000);
+}
+function masquerStatut() {
+  const el = document.getElementById('msg-statut');
+  el.className = 'msg-statut';
+  el.textContent = '';
+}
+</script>
+</body>
+</html>

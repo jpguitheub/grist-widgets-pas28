@@ -322,11 +322,16 @@
 <body>
 
 <!-- Bandeau contextuel élève -->
-<div id="bandeau">
-  <strong id="b-identifiant">—</strong>
-  <span id="b-secteur"></span>
-  <span id="b-rne"></span>
-  <span id="b-nb" style="margin-left:auto;background:rgba(255,255,255,.2);padding:2px 8px;border-radius:9px;font-weight:700;"></span>
+<div id="bandeau-attente" style="background:#f59e0b;color:white;padding:10px 14px;font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px;flex-shrink:0;">
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+  Aucun élève sélectionné — cliquer sur une ligne dans la grille Dossiers
+</div>
+<div id="bandeau" style="display:none;">
+  <div style="display:flex;flex-direction:column;gap:2px;">
+    <strong id="b-identifiant" style="font-size:15px;">—</strong>
+    <span id="b-details" style="font-size:11px;opacity:.85;"></span>
+  </div>
+  <span id="b-nb" style="margin-left:auto;background:rgba(255,255,255,.2);padding:3px 10px;border-radius:9px;font-weight:700;font-size:13px;"></span>
 </div>
 
 <!-- Corps principal -->
@@ -335,7 +340,7 @@
   <!-- Liste des interventions -->
   <div id="liste">
     <div id="liste-header">
-      <span>Interventions1</span>
+      <span>Interventions</span>
       <button id="btn-new" onclick="nouvelleIntervention()">+ Nouvelle</button>
     </div>
     <div id="liste-items">
@@ -551,18 +556,44 @@ function initGrist() {
 
   // Réception de l'enregistrement sélectionné (T_dossiers)
   grist.onRecord(record => {
-    if (!record) return;
+    // Log visible dans le bandeau pour diagnostiquer
+    const dbg = document.getElementById('bandeau-attente');
+
+    if (!record) {
+      dbg.textContent = '⚠ onRecord appelé mais record = null';
+      dossierId = null; cacherFormulaire(); return;
+    }
+    if (!record.id) {
+      dbg.textContent = '⚠ record reçu mais record.id manquant — clés : ' + Object.keys(record).join(', ');
+      dossierId = null; cacherFormulaire(); return;
+    }
+
+    // Tout est OK
     dossierId = record.id;
-    // Mettre à jour le bandeau
-    document.getElementById('b-identifiant').textContent =
-      record.Identifiant_eleve || '—';
-    document.getElementById('b-secteur').textContent =
-      record.Secteur_PAS || '';
-    document.getElementById('b-rne').textContent =
-      (record.RNE && record.RNE.etab_nom) ? record.RNE.etab_nom : '';
-    // Charger les interventions
+    document.getElementById('bandeau-attente').style.display = 'none';
+    document.getElementById('bandeau').style.display = 'flex';
+
+    const identifiant = record.Identifiant_eleve || '—';
+    const secteur     = record.Secteur_PAS       || '';
+    const etab        = record.Ecole || record.College_Lycee || '';
+    const annee       = record.Annee_scolaire     || '';
+    document.getElementById('b-identifiant').textContent = identifiant;
+    document.getElementById('b-details').textContent =
+      [secteur, etab, annee].filter(Boolean).join('  ·  ');
+
     chargerInterventions();
   });
+
+  // Si onRecord n'est jamais appelé dans les 3s → afficher un avertissement
+  setTimeout(() => {
+    if (!dossierId) {
+      document.getElementById('bandeau-attente').textContent =
+        '⚠ onRecord non déclenché après 3s — vérifier : ' +
+        '1) Source du widget = T_dossiers  ' +
+        '2) Sélectionner par = grille dossiers  ' +
+        '3) Accès complet activé';
+    }
+  }, 3000);
 
   // Charger la liste T_pas pour le select Intervenant
   chargerIntervenants();

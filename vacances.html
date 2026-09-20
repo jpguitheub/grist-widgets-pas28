@@ -22,10 +22,11 @@
       border-radius: 50%; animation: spin 0.7s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
     #status { margin-top: 16px; padding: 10px 14px; border-radius: 6px;
-      font-size: 13px; display: none; }
+      font-size: 13px; display: none; white-space: pre-line; }
     #status.ok    { background: #e2efda; color: #375623; border-left: 4px solid #375623; }
     #status.error { background: #fce4d6; color: #843c0c; border-left: 4px solid #843c0c; }
     #status.info  { background: #d6e4f0; color: #1f4e79; border-left: 4px solid #1f4e79; }
+    #status.warn  { background: #fff2cc; color: #7f6000; border-left: 4px solid #bf9000; }
     #last-update { margin-top: 10px; font-size: 11px; color: #888; }
     table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 12px; }
     th { background: #1f4e79; color: white; padding: 8px 10px; text-align: left; font-weight: 600; }
@@ -42,14 +43,14 @@
 
   <button class="btn" id="btn-refresh">
     <span class="spinner" id="spinner"></span>
-    <span id="btn-label">🔄 Actualiser les vacances zone B</span>
+    <span id="btn-label">🔄 Actualiser les vacances zone B (sans doublon)</span>
   </button>
 
   <div id="status"></div>
   <div id="last-update"></div>
 
   <div id="preview">
-    <h2>Aperçu des données importées</h2>
+    <h2>Aperçu des données importées (une ligne par période)</h2>
     <table>
       <thead><tr>
         <th>Année scolaire</th><th>Description</th><th>Début</th><th>Fin (reprise)</th>
@@ -112,12 +113,13 @@ document.getElementById("annees-label").textContent =
 
 // ── Récupération paginée ──────────────────────────────────────────────────────
 // L'API v2 retourne max 100 enregistrements par appel.
-// On boucle sur les 3 années pour être sûr de tout avoir.
+// Le dataset contient une ligne par académie pour une même zone : on récupère
+// large (limit=100) puis on déduplique nous-mêmes par période.
 async function fetchAnnee(annee) {
   const where = encodeURIComponent(
     `annee_scolaire="${annee}" AND zones="Zone B"`
   );
-  const url = `${API_BASE}?where=${where}&limit=50&order_by=start_date`;
+  const url = `${API_BASE}?where=${where}&limit=100&order_by=start_date`;
   const resp = await fetch(url);
   if (!resp.ok) {
     const body = await resp.text();
@@ -126,6 +128,38 @@ async function fetchAnnee(annee) {
   const json = await resp.json();
   // L'API v2 retourne { records: [ { record: { fields: {...} } }, … ] }
   return (json.records || []).map(r => r.record ? r.record.fields : r.fields || r);
+}
+
+// ── Déduplication : une seule ligne par (année scolaire, période) ────────────
+// Le dataset officiel publie une ligne par académie pour une même zone
+// (ex. 11 académies en zone B), donc la même période de vacances apparaît
+// plusieurs fois avec des dates identiques. On ne garde que la première
+// occurrence de chaque (annee_scolaire, description), et on avertit si deux
+// lignes censées être identiques ont des dates différentes (cas anormal).
+function dedupliquer(records) {
+  const parDate = new Map(); // clé "annee|description" -> { annee_scolaire, description, date_debut, date_fin }
+  const conflits = [];
+
+  for (const f of records) {
+    const annee = (f.annee_scolaire || "").trim();
+    const description = (f.description || "").trim();
+    const date_debut = toUnix(f.start_date);
+    const date_fin = toUnix(f.end_date);
+    if (!annee || !description || !date_debut || !date_fin) continue;
+
+    const cle = annee + "|" + description;
+    const existant = parDate.get(cle);
+    if (!existant) {
+      parDate.set(cle, { annee_scolaire: annee, description, date_debut, date_fin });
+    } else if (existant.date_debut !== date_debut || existant.date_fin !== date_fin) {
+      // Deux lignes pour la même période mais avec des dates différentes :
+      // on garde la première rencontrée et on le signale, plutôt que de
+      // choisir arbitrairement en silence.
+      conflits.push(`${description} (${annee}) : dates différentes selon l'académie`);
+    }
+  }
+
+  return { rows: Array.from(parDate.values()), conflits };
 }
 
 // ── Fonction principale ───────────────────────────────────────────────────────
@@ -150,16 +184,24 @@ async function refreshVacances() {
       );
     }
 
-    setStatus(allRecords.length + " périodes récupérées — écriture dans Grist…", "info");
+    // 2. Dédupliquer : une seule ligne par période et par année scolaire
+    const { rows, conflits } = dedupliquer(allRecords);
 
-    // 2. Trouver l'ID Grist de la table
+    if (rows.length === 0) {
+      throw new Error("Aucune période exploitable après déduplication.");
+    }
+
+    setStatus(rows.length + " périodes distinctes (sur " + allRecords.length +
+      " lignes reçues) — écriture dans Grist…", "info");
+
+    // 3. Trouver l'ID Grist de la table
     const tables = await grist.docApi.listTables();
     const gristId = tables.find(t => t.toLowerCase() === TABLE_NAME.toLowerCase());
     if (!gristId) {
       throw new Error("Table \"" + TABLE_NAME + "\" introuvable. Tables : " + tables.join(", "));
     }
 
-    // 3. Vider la table
+    // 4. Vider la table (élimine aussi les doublons déjà importés par le passé)
     const existing = await grist.docApi.fetchTable(gristId);
     if (existing.id && existing.id.length > 0) {
       await grist.docApi.applyUserActions([
@@ -167,16 +209,9 @@ async function refreshVacances() {
       ]);
     }
 
-    // 4. Préparer les lignes
-    // Champs API v2 : description, start_date, end_date, annee_scolaire, zones, location
-    const rows = allRecords.map(f => ({
-      annee_scolaire: (f.annee_scolaire || "").trim(),
-      description:    (f.description    || "").trim(),
-      date_debut:     toUnix(f.start_date),
-      date_fin:       toUnix(f.end_date),
-    }));
+    // 5. Trier par date pour un affichage lisible, puis insérer
+    rows.sort((a, b) => a.date_debut - b.date_debut);
 
-    // 5. Insérer
     await grist.docApi.applyUserActions([
       ["BulkAddRecord", gristId, rows.map(() => null), {
         annee_scolaire: rows.map(r => r.annee_scolaire),
@@ -197,13 +232,22 @@ async function refreshVacances() {
       tr.innerHTML =
         "<td>" + r.annee_scolaire + "</td>" +
         "<td>" + r.description + "</td>" +
-        "<td>" + fmtDate(r.date_debut ? new Date(r.date_debut * 1000).toISOString() : null) + "</td>" +
-        "<td>" + fmtDate(r.date_fin   ? new Date(r.date_fin   * 1000).toISOString() : null) + "</td>";
+        "<td>" + fmtDate(new Date(r.date_debut * 1000).toISOString()) + "</td>" +
+        "<td>" + fmtDate(new Date(r.date_fin   * 1000).toISOString()) + "</td>";
       tbody.appendChild(tr);
     });
     document.getElementById("preview").style.display = "block";
 
-    setStatus("✅ " + rows.length + " périodes importées pour : " + anneesVoulues.join(", "), "ok");
+    if (conflits.length > 0) {
+      setStatus(
+        "⚠️ " + rows.length + " périodes importées pour : " + anneesVoulues.join(", ") +
+        "\nConflits ignorés (première valeur conservée) :\n- " + conflits.join("\n- "),
+        "warn"
+      );
+    } else {
+      setStatus("✅ " + rows.length + " périodes importées (une ligne par période) pour : " +
+        anneesVoulues.join(", "), "ok");
+    }
 
   } catch (err) {
     setStatus("❌ Erreur : " + err.message, "error");
